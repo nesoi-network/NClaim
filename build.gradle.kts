@@ -1,4 +1,6 @@
 import org.apache.tools.ant.filters.ReplaceTokens
+import java.net.URI
+import java.util.zip.ZipInputStream
 
 plugins {
     java
@@ -36,6 +38,25 @@ repositories {
     maven("https://jitpack.io") { content { includeGroup("com.github.MilkBowl") } }
 }
 
+// Farmer (Geik) is not published to a Maven repository; its release zip holds the plugin jar.
+val farmerVersion = "v6-b114"
+val farmerJar = layout.buildDirectory.file("deps/Farmer-$farmerVersion.jar")
+val fetchFarmer = tasks.register("fetchFarmer") {
+    val url = "https://github.com/Geik-xyz/Farmer-v6/releases/download/$farmerVersion/Farmer-v6.zip"
+    val entry = "Farmer-$farmerVersion.jar"
+    val target = farmerJar
+    outputs.file(target)
+    doLast {
+        val out = target.get().asFile
+        out.parentFile.mkdirs()
+        ZipInputStream(URI(url).toURL().openStream()).use { zip ->
+            generateSequence { zip.nextEntry }.firstOrNull { it.name == entry }
+                ?: throw GradleException("$entry not found in $url")
+            out.outputStream().use { zip.copyTo(it) }
+        }
+    }
+}
+
 dependencies {
     // Nothing is shaded: everything comes from the server, another plugin,
     // or Paper's library loader (see `libraries` in plugin.yml).
@@ -53,6 +74,7 @@ dependencies {
     ).forEach { compileOnly(it) { isTransitive = false } }
     compileOnly("net.skinsrestorer:skinsrestorer-api:15.8.2")
     compileOnly("com.artillexstudios:AxSellwands:1.11.0") { isTransitive = false }
+    compileOnly(files(farmerJar).builtBy(fetchFarmer))
 
     // Compile-time only (generates getters/setters); not part of the jar.
     compileOnly("org.projectlombok:lombok:1.18.48")
