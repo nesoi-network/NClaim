@@ -9,7 +9,10 @@ import nesoi.aysihuniks.nclaim.service.EconomyService;
 import nesoi.aysihuniks.nclaim.utils.LangManager;
 import nesoi.aysihuniks.nclaim.utils.Scheduler;
 import nesoi.aysihuniks.nclaim.utils.Text;
+import me.clip.placeholderapi.PlaceholderAPI;
+import nesoi.aysihuniks.nclaim.utils.Numbers;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -22,6 +25,8 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.Transformation;
+import org.joml.Vector3f;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -44,6 +49,7 @@ public final class HologramManager implements Listener {
     private final Map<String, TextDisplay> displays = new ConcurrentHashMap<>();
     private final Map<UUID, String> ownerNames = new ConcurrentHashMap<>();
     private ScheduledTask updateTask;
+    private boolean placeholderApi;
 
     public HologramManager(@NotNull NClaim plugin) {
         this.plugin = plugin;
@@ -51,6 +57,7 @@ public final class HologramManager implements Listener {
     }
 
     public void start() {
+        placeholderApi = Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI");
         Bukkit.getPluginManager().registerEvents(this, plugin);
         for (Claim claim : Claim.claims) spawn(claim);
         updateTask = Scheduler.globalTimer(this::updateAll, UPDATE_INTERVAL_TICKS, UPDATE_INTERVAL_TICKS);
@@ -69,9 +76,45 @@ public final class HologramManager implements Listener {
     /* ---------------- lifecycle ---------------- */
 
     private boolean enabled() {
-        Config c = plugin.getNconfig();
-        return c.isShowHologramTitle() || c.isShowHologramOwner() || c.isShowHologramTimeLeft()
-                || c.isShowHologramCoopCount() || c.isShowHologramTotalSize() || c.isShowHologramEdit();
+        return !plugin.getNconfig().getHologramLines().isEmpty();
+    }
+
+    private Location locationOf(Claim claim) {
+        return claim.getClaimBlockLocation().clone().add(0.5, plugin.getNconfig().getHologramHeight(), 0.5);
+    }
+
+    private void applyStyle(TextDisplay display) {
+        Config config = plugin.getNconfig();
+        display.setShadowed(config.isHologramShadow());
+        float scale = config.getHologramScale();
+        Transformation current = display.getTransformation();
+        display.setTransformation(new Transformation(current.getTranslation(), current.getLeftRotation(),
+                new Vector3f(scale, scale, scale), current.getRightRotation()));
+        String background = config.getHologramBackground() == null ? "default" : config.getHologramBackground().trim();
+        if (background.equalsIgnoreCase("default")) {
+            display.setDefaultBackground(true);
+            display.setBackgroundColor(null);
+        } else if (background.equalsIgnoreCase("none")) {
+            display.setDefaultBackground(false);
+            display.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+        } else {
+            Color color = parseColor(background);
+            if (color != null) {
+                display.setDefaultBackground(false);
+                display.setBackgroundColor(color);
+            }
+        }
+    }
+
+    /** "#RRGGBB" or "#AARRGGBB". */
+    private static Color parseColor(String hex) {
+        String h = hex.startsWith("#") ? hex.substring(1) : hex;
+        try {
+            if (h.length() == 6) return Color.fromARGB(0xFF000000 | Integer.parseInt(h, 16));
+            if (h.length() == 8) return Color.fromARGB((int) Long.parseLong(h, 16));
+        } catch (NumberFormatException ignored) {
+        }
+        return null;
     }
 
     /** Creates the hologram if the claim's main chunk is loaded. Safe from any thread. */
@@ -88,13 +131,13 @@ public final class HologramManager implements Listener {
         TextDisplay existing = displays.get(claim.getClaimId());
         if (existing != null && existing.isValid()) return;
 
-        Location location = claim.getClaimBlockLocation().clone().add(0.5, 1.25, 0.5);
+        Location location = locationOf(claim);
         TextDisplay display = world.spawn(location, TextDisplay.class, d -> {
             d.setPersistent(false);
             d.setBillboard(Display.Billboard.CENTER);
-            d.setShadowed(true);
             d.setViewRange(0.5f);
             d.getPersistentDataContainer().set(tag, PersistentDataType.STRING, claim.getClaimId());
+            applyStyle(d);
             d.text(Text.component(render(claim)));
         });
         displays.put(claim.getClaimId(), display);
@@ -125,7 +168,18 @@ public final class HologramManager implements Listener {
             });
             return;
         }
-        for (Claim claim : Claim.claims) refresh(claim);
+        for (Claim claim : Claim.claims) {
+            TextDisplay display = displays.get(claim.getClaimId());
+            if (display == null || !display.isValid()) {
+                spawn(claim);
+                continue;
+            }
+            Scheduler.entity(display, () -> {
+                applyStyle(display);
+                display.teleportAsync(locationOf(claim));
+                display.text(Text.component(render(claim)));
+            });
+        }
     }
 
     public void removeWorld(@NotNull String worldName) {
@@ -173,36 +227,42 @@ public final class HologramManager implements Listener {
     }
 
     private String render(Claim claim) {
-        Config config = plugin.getNconfig();
         LangManager lang = plugin.getLangManager();
         List<String> lines = new ArrayList<>();
-
-        if (config.isShowHologramTitle()) {
-            String title = lang.getString("hologram.title").replace("{display_name}", claim.getDisplayName());
-            if (claim.isForSale()) {
-                String price = lang.getString("hologram.price_format").replace("{price}", EconomyService.format(claim.getSalePrice()));
-                title += " " + lang.getString("hologram.title_sale_suffix").replace("{price}", price);
-            }
-            lines.add(title);
-        }
-        if (config.isShowHologramOwner()) {
-            lines.add(lang.getString("hologram.owner").replace("{owner}", ownerName(claim.getOwner())));
-        }
-        if (config.isShowHologramTimeLeft()) {
-            lines.add(lang.getString("hologram.time_left.text")
-                    .replace("{time_left}", plugin.getClaimExpirationManager().getFormattedTimeLeft(claim)));
-        }
-        if (config.isShowHologramCoopCount()) {
-            lines.add(lang.getString("hologram.coop_count").replace("{coop_count}", String.valueOf(claim.getCoopPlayers().size())));
-        }
-        if (config.isShowHologramTotalSize()) {
-            lines.add(lang.getString("hologram.total_size").replace("{total_size}", String.valueOf(claim.getTotalChunkCount())));
-        }
-        if (config.isShowHologramEdit()) {
-            if (lines.size() > 1) lines.add("");
-            lines.add(lang.getString("hologram.edit"));
+        for (String line : plugin.getNconfig().getHologramLines()) {
+            String key = line.trim().toLowerCase(java.util.Locale.ROOT);
+            String text = switch (key) {
+                case "title" -> {
+                    String title = lang.getString("hologram.title");
+                    if (claim.isForSale()) {
+                        String price = lang.getString("hologram.price_format").replace("{price}", EconomyService.format(claim.getSalePrice()));
+                        title += " " + lang.getString("hologram.title_sale_suffix").replace("{price}", price);
+                    }
+                    yield title;
+                }
+                case "owner", "coop_count", "total_size", "value", "edit" -> lang.getString("hologram." + key);
+                case "time_left" -> lang.getString("hologram.time_left.text");
+                default -> line;
+            };
+            lines.add(fill(claim, text));
         }
         return String.join("\n", lines);
+    }
+
+    private String fill(Claim claim, String text) {
+        if (text.indexOf('{') >= 0) {
+            text = text.replace("{display_name}", claim.getDisplayName())
+                    .replace("{owner}", ownerName(claim.getOwner()))
+                    .replace("{time_left}", plugin.getClaimExpirationManager().getFormattedTimeLeft(claim))
+                    .replace("{coop_count}", String.valueOf(claim.getCoopPlayers().size()))
+                    .replace("{total_size}", String.valueOf(claim.getTotalChunkCount()))
+                    .replace("{value}", Numbers.format(claim.getClaimValue()))
+                    .replace("{claim_id}", claim.getClaimId());
+        }
+        if (placeholderApi && text.indexOf('%') >= 0) {
+            text = PlaceholderAPI.setPlaceholders(Bukkit.getOfflinePlayer(claim.getOwner()), text);
+        }
+        return text;
     }
 
     /** Owner names are cached; call when a claim changes hands. */

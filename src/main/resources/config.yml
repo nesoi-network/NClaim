@@ -32,30 +32,29 @@ claim_distance:
   bypass_coop_players: true # If true, allows players to claim chunks adjacent to claims owned by their co-op teammates, ignoring the standard distance rule.
 
 # Hologram Settings
-# These settings allow you to customize the color of the "Time Left" field in claim holograms, perfect for matching your server's theme!
-#
-# How does it work?
-# - Each threshold defines a time condition and a color.
-# - threshold: Time condition (e.g., "day >= 2", "day < 1", "minute <= 5")
-# - color: Color code (e.g., "&a", "&e", "&c", hex: "<#FF0000>")
-#
-# Thresholds are checked in order; the first matching one is used.
-# Example:
-#   - threshold: "day >= 2"   -> If days left is 2 or more, use &a (green)
-#   - threshold: "day >= 1"   -> If days left is 1 or more, use &e (yellow)
-#   - threshold: "day < 1"    -> If days left is less than 1, use &c (red)
-#
-# Add as many thresholds/colors as you like for your server!
-# Tip:
-# You don't need to shut down and restart the server or use a full reload to process the thresholds;
-# you can apply them in-game by simply using the /nclaim admin reload command.
+# The hologram above every claim block. Apply changes with /nclaim admin reload.
 hologram_settings:
-  show_title: true             # Show title in hologram?
-  show_owner: true             # Show owner name in hologram?
-  show_time_left: true         # Show time left in hologram?
-  show_coop_count: true        # Show co-op player count in hologram?
-  show_total_size: true        # Show total claim size in hologram?
-  show_edit: true              # Show edit text in hologram?
+  # One entry per line, top to bottom. Leave the list empty to turn holograms off.
+  # Built-in lines use the texts from your language file (lang/<language>.yml > hologram):
+  #   title, owner, time_left, coop_count, total_size, value, edit
+  # Anything else is shown as written. You can use:
+  #   {display_name} {owner} {time_left} {coop_count} {total_size} {value} {claim_id}
+  #   colour codes (&a, <#FF5733>, &#FF5733) and PlaceholderAPI placeholders (the claim owner is the player)
+  # Use "" for an empty line.
+  lines:
+    - title
+    - owner
+    - time_left
+    - coop_count
+    - total_size
+    - ""
+    - edit
+  height: 1.25           # Blocks above the claim block
+  scale: 1.0             # Text size, 1.0 = normal
+  background: "default"  # "default", "none", or a colour like "#000000" or "#80000000" (AARRGGBB, with transparency)
+  shadow: true           # Text shadow
+  # Colour of {time_left}. Conditions are checked from top to bottom, the first match is used.
+  # Units: day, hour, minute. Colours: "&a", "<#FF0000>" ...
   time_left_thresholds:
     - threshold: "day >= 2"
       color: "&a"

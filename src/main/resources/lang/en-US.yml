@@ -161,6 +161,7 @@ hologram:
     # d,h,m,s are known as time symbols in the hologram. e.g. "23d, 12h, 50m, 43s"
   coop_count: "&fCo-op Players: &e{coop_count}"
   total_size: "&fTotal Size: &e{total_size} &7chunks"
+  value: "&fValue: &e{value}"
   edit: "&eRight click to edit"
 
 # DO NOT CHANGE!

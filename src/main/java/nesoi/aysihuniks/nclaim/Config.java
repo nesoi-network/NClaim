@@ -56,12 +56,11 @@ public class Config {
     @lombok.Getter(lombok.AccessLevel.NONE)
     private List<NameRule> nameBlacklist = List.of();
 
-    private boolean showHologramTitle;
-    private boolean showHologramOwner;
-    private boolean showHologramTimeLeft;
-    private boolean showHologramCoopCount;
-    private boolean showHologramTotalSize;
-    private boolean showHologramEdit;
+    private List<String> hologramLines = List.of();
+    private double hologramHeight;
+    private float hologramScale;
+    private String hologramBackground;
+    private boolean hologramShadow;
 
     private boolean databaseEnabled;
     private String databaseType;
@@ -140,12 +139,11 @@ public class Config {
         blacklist.addAll(c.getStringList("claim_settings.name_blacklist"));
         nameBlacklist = compileBlacklist(blacklist);
 
-        showHologramTitle = c.getBoolean("hologram_settings.show_title", true);
-        showHologramOwner = c.getBoolean("hologram_settings.show_owner", true);
-        showHologramTimeLeft = c.getBoolean("hologram_settings.show_time_left", true);
-        showHologramCoopCount = c.getBoolean("hologram_settings.show_coop_count", true);
-        showHologramTotalSize = c.getBoolean("hologram_settings.show_total_size", true);
-        showHologramEdit = c.getBoolean("hologram_settings.show_edit", true);
+        hologramLines = List.copyOf(c.getStringList("hologram_settings.lines"));
+        hologramHeight = c.getDouble("hologram_settings.height", 1.25);
+        hologramScale = (float) Math.max(0.1, c.getDouble("hologram_settings.scale", 1.0));
+        hologramBackground = c.getString("hologram_settings.background", "default");
+        hologramShadow = c.getBoolean("hologram_settings.shadow", true);
 
         timeExtensionPricePerMinute = c.getDouble("time_extension.price_per_minute", 10);
         timeExtensionPricePerHour = c.getDouble("time_extension.price_per_hour", 500);
@@ -482,10 +480,12 @@ public class Config {
         YamlConfiguration def = YamlConfiguration.loadConfiguration(new InputStreamReader(defaults, StandardCharsets.UTF_8));
 
         boolean changed = false;
+        if (migrateHologramLines(def)) changed = true;
         for (String key : def.getKeys(true)) {
             if (def.isConfigurationSection(key) || config.contains(key, true)) continue;
             config.set(key, def.get(key));
             config.setComments(key, def.getComments(key));
+            config.setInlineComments(key, def.getInlineComments(key));
             changed = true;
         }
         if (changed) backup();
@@ -497,6 +497,27 @@ public class Config {
             Msg.log("&cCould not update config.yml: " + e.getMessage());
         }
         return load();
+    }
+
+    /** 4.0 had one show_* switch per hologram line; 4.1 has an ordered line list built from them. */
+    private boolean migrateHologramLines(YamlConfiguration def) {
+        String base = "hologram_settings.";
+        if (config.contains(base + "lines", true) || !config.contains(base + "show_title", true)) return false;
+        List<String> lines = new ArrayList<>();
+        for (String line : List.of("title", "owner", "time_left", "coop_count", "total_size")) {
+            if (config.getBoolean(base + "show_" + line, true)) lines.add(line);
+        }
+        if (config.getBoolean(base + "show_edit", true)) {
+            if (lines.size() > 1) lines.add("");
+            lines.add("edit");
+        }
+        for (String line : List.of("title", "owner", "time_left", "coop_count", "total_size", "edit")) {
+            config.set(base + "show_" + line, null);
+        }
+        config.set(base + "lines", lines);
+        config.setComments(base + "lines", def.getComments(base + "lines"));
+        Msg.log("&aHologram lines moved to hologram_settings.lines in config.yml.");
+        return true;
     }
 
     private void backup() {

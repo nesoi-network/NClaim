@@ -161,6 +161,7 @@ hologram:
     # d,h,m,s Hologramdakı süre sembolleri olarak bilinirler. örn: "23d, 12h, 50m, 59s"
   coop_count: "&fOrtak Oyuncular: &e{coop_count}"
   total_size: "&fToplam Boyut: &e{total_size} &7parça"
+  value: "&fDeğer: &e{value}"
   edit: "&eSağ tıkla ve özelleştir"
 
 menu:

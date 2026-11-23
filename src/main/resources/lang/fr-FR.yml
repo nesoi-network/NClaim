@@ -160,6 +160,7 @@ hologram:
     s: 's'
   coop_count: '&fJoueurs en coop : &e{coop_count}'
   total_size: '&fTaille totale : &e{total_size} &7chunks'
+  value: '&fValeur : &e{value}'
   edit: '&eClic droit pour éditer'
 
 # NE PAS CHANGER!
