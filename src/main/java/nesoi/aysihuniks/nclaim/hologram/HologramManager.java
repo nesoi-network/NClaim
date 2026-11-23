@@ -1,344 +1,212 @@
 package nesoi.aysihuniks.nclaim.hologram;
 
+import org.bukkit.event.world.EntitiesLoadEvent;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import nesoi.aysihuniks.nclaim.Config;
 import nesoi.aysihuniks.nclaim.NClaim;
-import nesoi.aysihuniks.nclaim.enums.HoloEnum;
 import nesoi.aysihuniks.nclaim.model.Claim;
+import nesoi.aysihuniks.nclaim.service.EconomyService;
+import nesoi.aysihuniks.nclaim.utils.LangManager;
+import nesoi.aysihuniks.nclaim.utils.Scheduler;
+import nesoi.aysihuniks.nclaim.utils.Text;
 import org.bukkit.Bukkit;
-import org.bukkit.Chunk;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.World;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.scheduler.BukkitRunnable;
-import org.nandayo.dapi.util.HexUtil;
-import org.nandayo.dapi.util.Util;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.TextDisplay;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.persistence.PersistentDataType;
+import org.jetbrains.annotations.NotNull;
 
-import java.io.File;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class HologramManager {
+/**
+ * Claim holograms on vanilla text displays. They are not persistent: spawned when the chunk loads
+ * and gone with it, so no orphans. Updates run on the display's own scheduler (Folia).
+ */
+public final class HologramManager implements Listener {
+
+    private static final long UPDATE_INTERVAL_TICKS = 20L;
+
     private final NClaim plugin;
-    private static final double DECENT_HOLO_OFFSET = 3.5;
-    private static final double FANCY_HOLO_OFFSET = 1.5;
-    private HologramHandler hologramHandler;
-    private final Set<String> pendingWorlds = new HashSet<>();
-    private boolean initialCleanupDone = false;
+    private final NamespacedKey tag;
+    private final Map<String, TextDisplay> displays = new ConcurrentHashMap<>();
+    private final Map<UUID, String> ownerNames = new ConcurrentHashMap<>();
+    private ScheduledTask updateTask;
 
-    private static final Pattern HOLOGRAM_ID_PATTERN = Pattern.compile("claim_(.+)_(-?\\d+)_(-?\\d+)");
-
-    public HologramManager(NClaim plugin) {
+    public HologramManager(@NotNull NClaim plugin) {
         this.plugin = plugin;
-        initializeHologramHandler();
-        identifyPendingWorlds();
-        scheduleInitialCleanup();
+        this.tag = new NamespacedKey(plugin, "hologram");
     }
 
-    private void initializeHologramHandler() {
-        if (HoloEnum.getActiveHologram() == HoloEnum.DECENT_HOLOGRAM) {
-            hologramHandler = new DecentHologramHandler();
-        } else if (HoloEnum.getActiveHologram() == HoloEnum.FANCY_HOLOGRAM) {
-            hologramHandler = new FancyHologramHandler();
-        } else {
-            throw new IllegalStateException("No supported hologram plugin found!");
+    public void start() {
+        Bukkit.getPluginManager().registerEvents(this, plugin);
+        for (Claim claim : Claim.claims) spawn(claim);
+        updateTask = Scheduler.globalTimer(this::updateAll, UPDATE_INTERVAL_TICKS, UPDATE_INTERVAL_TICKS);
+    }
+
+    public void shutdown() {
+        Scheduler.cancel(updateTask);
+        HandlerList.unregisterAll(this);
+        for (TextDisplay display : displays.values()) {
+            // Not persistent, so the server discards them anyway; remove directly where allowed (plugin reloads).
+            if (!Scheduler.isFolia() || Bukkit.isOwnedByCurrentRegion(display)) display.remove();
         }
+        displays.clear();
     }
 
-    private void identifyPendingWorlds() {
-        if (plugin.getNconfig().isDatabaseEnabled()) return;
+    /* ---------------- lifecycle ---------------- */
 
-        File file = new File(plugin.getDataFolder(), "claims.yml");
-        if (!file.exists()) return;
-
-        try {
-            FileConfiguration config = YamlConfiguration.loadConfiguration(file);
-            ConfigurationSection section = config.getConfigurationSection("chunks_claimed");
-            if (section == null) return;
-
-            for (String claimId : section.getKeys(false)) {
-                String[] parts = claimId.split("_");
-                if (parts.length == 3) {
-                    String worldName = parts[0];
-                    if (Bukkit.getWorld(worldName) == null) {
-                        pendingWorlds.add(worldName);
-                    }
-                }
-            }
-
-            if (!pendingWorlds.isEmpty()) {
-                Util.log("&eWaiting for " + pendingWorlds.size() + " worlds to load: " + pendingWorlds);
-            }
-
-        } catch (Exception e) {
-            Util.log("&cError identifying pending worlds: " + e.getMessage());
-        }
+    private boolean enabled() {
+        Config c = plugin.getNconfig();
+        return c.isShowHologramTitle() || c.isShowHologramOwner() || c.isShowHologramTimeLeft()
+                || c.isShowHologramCoopCount() || c.isShowHologramTotalSize() || c.isShowHologramEdit();
     }
 
-    private void scheduleInitialCleanup() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                smartCleanupOrphanedHolograms();
-                initialCleanupDone = true;
-
-                new BukkitRunnable() {
-                    @Override
-                    public void run() {
-                        validateAndRecreateHolograms();
-                    }
-                }.runTaskLater(plugin, 60L);
-            }
-        }.runTaskLater(plugin, 20L * 8);
-    }
-
-
-    public void smartCleanupOrphanedHolograms() {
-        List<String> allHologramIds = hologramHandler.getHologramIds();
-        int removedCount = 0;
-        int protectedCount = 0;
-
-        for (String hologramId : allHologramIds) {
-            if (!hologramId.startsWith("claim_")) continue;
-
-            ChunkInfo chunkInfo = parseHologramId(hologramId);
-            if (chunkInfo == null) continue;
-
-            if (pendingWorlds.contains(chunkInfo.worldName)) {
-                protectedCount++;
-                continue;
-            }
-
-            World world = Bukkit.getWorld(chunkInfo.worldName);
-            if (world == null) {
-                hologramHandler.deleteHologram(hologramId);
-                removedCount++;
-                continue;
-            }
-
-            Chunk chunk = world.getChunkAt(chunkInfo.x, chunkInfo.z);
-            Claim claim = Claim.getClaim(chunk);
-
-            if (claim == null) {
-                hologramHandler.deleteHologram(hologramId);
-                removedCount++;
-            }
-        }
-
-        if (removedCount > 0 || protectedCount > 0) {
-            Util.log("&aHologram cleanup completed. Removed: " + removedCount + " | Protected: " + protectedCount);
-        }
-    }
-
-    public void onWorldLoaded(String worldName) {
-        if (!pendingWorlds.contains(worldName)) return;
-
-        Util.log("&aPending world '" + worldName + "' loaded! Checking holograms...");
-        pendingWorlds.remove(worldName);
-
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                createHologramsForWorld(worldName);
-            }
-        }.runTaskLater(plugin, 10L);
-    }
-
-    public void createHologramsForWorld(String worldName) {
-        World world = Bukkit.getWorld(worldName);
+    /** Creates the hologram if the claim's main chunk is loaded. Safe from any thread. */
+    public void spawn(@NotNull Claim claim) {
+        if (!enabled()) return;
+        World world = claim.getWorld();
         if (world == null) return;
+        Scheduler.at(world, claim.getChunkX(), claim.getChunkZ(), () -> spawnHere(claim));
+    }
 
-        int created = 0;
-        for (Claim claim : Claim.claims) {
-            if (claim.getChunk().getWorld().getName().equals(worldName)) {
-                String hologramId = getHologramId(claim.getChunk());
+    private void spawnHere(Claim claim) {
+        World world = claim.getWorld();
+        if (world == null || claim.isRemoved() || !world.isChunkLoaded(claim.getChunkX(), claim.getChunkZ())) return;
+        TextDisplay existing = displays.get(claim.getClaimId());
+        if (existing != null && existing.isValid()) return;
 
-                if (hologramExists(hologramId)) {
-                    createHologramForClaim(claim);
-                    created++;
-                }
+        Location location = claim.getClaimBlockLocation().clone().add(0.5, 1.25, 0.5);
+        TextDisplay display = world.spawn(location, TextDisplay.class, d -> {
+            d.setPersistent(false);
+            d.setBillboard(Display.Billboard.CENTER);
+            d.setShadowed(true);
+            d.setViewRange(0.5f);
+            d.getPersistentDataContainer().set(tag, PersistentDataType.STRING, claim.getClaimId());
+            d.text(Text.component(render(claim)));
+        });
+        displays.put(claim.getClaimId(), display);
+    }
+
+    public void remove(@NotNull Claim claim) {
+        TextDisplay display = displays.remove(claim.getClaimId());
+        if (display != null) Scheduler.entity(display, display::remove);
+    }
+
+    /** Re-renders a hologram now (after a rename, sale, new co-op ...). */
+    public void refresh(@NotNull Claim claim) {
+        TextDisplay display = displays.get(claim.getClaimId());
+        if (display == null || !display.isValid()) {
+            spawn(claim);
+            return;
+        }
+        Scheduler.entity(display, () -> display.text(Text.component(render(claim))));
+    }
+
+    /** Called after a reload: settings or texts may have changed. */
+    public void refreshAll() {
+        ownerNames.clear();
+        if (!enabled()) {
+            new ArrayList<>(displays.keySet()).forEach(id -> {
+                Claim claim = Claim.claims.getById(id);
+                if (claim != null) remove(claim);
+            });
+            return;
+        }
+        for (Claim claim : Claim.claims) refresh(claim);
+    }
+
+    public void removeWorld(@NotNull String worldName) {
+        displays.values().removeIf(display -> !display.isValid() || display.getWorld().getName().equals(worldName));
+    }
+
+    private void updateAll() {
+        for (Map.Entry<String, TextDisplay> entry : displays.entrySet()) {
+            TextDisplay display = entry.getValue();
+            Claim claim = Claim.claims.getById(entry.getKey());
+            if (claim == null || !display.isValid()) {
+                displays.remove(entry.getKey(), display);
+                continue;
             }
-        }
-
-        if (created > 0) {
-            Util.log("&aCreated " + created + " holograms for world '" + worldName + "'");
+            Scheduler.entity(display, () -> display.text(Text.component(render(claim))));
         }
     }
 
-    public void validateAndRecreateHolograms() {
-        if (!initialCleanupDone) return;
+    /* ---------------- events ---------------- */
 
-        int created = 0;
-        for (Claim claim : Claim.claims) {
-            String hologramId = getHologramId(claim.getChunk());
-
-            if (hologramExists(hologramId)) {
-                createHologramForClaim(claim);
-                created++;
-            }
-        }
-
-        if (created > 0) {
-            Util.log("&aRecreated " + created + " missing holograms.");
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onChunkLoad(ChunkLoadEvent event) {
+        Claim claim = Claim.claims.getAt(event.getChunk());
+        if (claim != null && claim.isMainChunk(event.getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ())) {
+            // Spawning during the load event itself is not allowed; do it on the next tick.
+            Scheduler.atLater(claim.getClaimBlockLocation(), () -> spawnHere(claim), 1L);
         }
     }
 
-    public boolean hologramExists(String hologramId) {
-        return !hologramHandler.getHologramIds().contains(hologramId);
-    }
-
-    public void createHologramForClaim(Claim claim) {
-        if (claim == null) return;
-
-        Location location = claim.getClaimBlockLocation();
-        if (location.getWorld() == null) return;
-
-        String hologramId = getHologramId(claim.getChunk());
-        hologramHandler.deleteHologram(hologramId);
-
-        List<String> lines = generateHologramLines(claim);
-        Location adjustedLocation = getCenteredLocation(location.clone(), lines.size());
-
-        hologramHandler.createHologram(hologramId, adjustedLocation, lines);
-    }
-
-    public void cleanupOrphanedHolograms() {
-        smartCleanupOrphanedHolograms();
-    }
-
-    public void forceCleanup() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                smartCleanupOrphanedHolograms();
-            }
-        }.runTaskAsynchronously(plugin);
-    }
-
-    public void createHologram(Location location) {
-        Chunk chunk = location.getChunk();
-        Claim claim = Claim.getClaim(chunk);
-        if (claim == null) return;
-
-        String hologramId = getHologramId(chunk);
-        List<String> lines = generateHologramLines(claim);
-        Location adjustedLocation = getCenteredLocation(location.clone(), lines.size());
-
-        deleteHologram(chunk);
-        hologramHandler.createHologram(hologramId, adjustedLocation, lines);
-    }
-
-    public void deleteHologram(Chunk chunk) {
-        String hologramId = getHologramId(chunk);
-        hologramHandler.deleteHologram(hologramId);
-    }
-
-    private Location getCenteredLocation(Location location, int lineCount) {
-        double baseOffset = HoloEnum.getActiveHologram() == HoloEnum.DECENT_HOLOGRAM ?
-                DECENT_HOLO_OFFSET : FANCY_HOLO_OFFSET;
-
-        return location.clone().add(0.5, baseOffset, 0.5);
-    }
-
-    private double getLineSpacing() {
-        if (HoloEnum.getActiveHologram() == HoloEnum.DECENT_HOLOGRAM) {
-            return 0.3;
-        } else {
-            return 0.25;
+    /** Removes displays left by an earlier plugin instance (for example after a hot reload). */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntitiesLoad(EntitiesLoadEvent event) {
+        for (Entity entity : event.getEntities()) {
+            if (!(entity instanceof TextDisplay display)) continue;
+            String id = display.getPersistentDataContainer().get(tag, PersistentDataType.STRING);
+            if (id != null && displays.get(id) != display) display.remove();
         }
     }
 
-    private String getHologramId(Chunk chunk) {
-        return "claim_" + chunk.getWorld().getName() + "_" + chunk.getX() + "_" + chunk.getZ();
+    /* ---------------- text ---------------- */
+
+    private String ownerName(UUID owner) {
+        return ownerNames.computeIfAbsent(owner, uuid ->
+                Objects.requireNonNullElse(Bukkit.getOfflinePlayer(uuid).getName(), "?"));
     }
 
-    private List<String> generateHologramLines(Claim claim) {
+    private String render(Claim claim) {
+        Config config = plugin.getNconfig();
+        LangManager lang = plugin.getLangManager();
         List<String> lines = new ArrayList<>();
-        Chunk chunk = claim.getChunk();
-
-        Config config = NClaim.inst().getNconfig();
-
-        String coords = chunk.getWorld().getName() + "_" + chunk.getX() + "_" + chunk.getZ();
 
         if (config.isShowHologramTitle()) {
-            String titleLine = plugin.getLangManager().getString("hologram.title")
-                    .replace("{display_name}", "%nclaim_display_name_" + coords + "%")
-                    + "%nclaim_sale_status_" + coords + "%";
-
-            lines.add(titleLine);
+            String title = lang.getString("hologram.title").replace("{display_name}", claim.getDisplayName());
+            if (claim.isForSale()) {
+                String price = lang.getString("hologram.price_format").replace("{price}", EconomyService.format(claim.getSalePrice()));
+                title += " " + lang.getString("hologram.title_sale_suffix").replace("{price}", price);
+            }
+            lines.add(title);
         }
-
         if (config.isShowHologramOwner()) {
-            lines.add(plugin.getLangManager().getString("hologram.owner")
-                    .replace("{owner}", "%nclaim_owner_" + coords + "%"));
-
+            lines.add(lang.getString("hologram.owner").replace("{owner}", ownerName(claim.getOwner())));
         }
-
         if (config.isShowHologramTimeLeft()) {
-            lines.add(plugin.getLangManager().getString("hologram.time_left.text")
-                    .replace("{time_left}", "%nclaim_expiration_" + coords + "%"));
-
+            lines.add(lang.getString("hologram.time_left.text")
+                    .replace("{time_left}", plugin.getClaimExpirationManager().getFormattedTimeLeft(claim)));
         }
-
         if (config.isShowHologramCoopCount()) {
-            lines.add(plugin.getLangManager().getString("hologram.coop_count")
-                    .replace("{coop_count}", "%nclaim_coop_count_" + coords + "%"));
-
+            lines.add(lang.getString("hologram.coop_count").replace("{coop_count}", String.valueOf(claim.getCoopPlayers().size())));
         }
-
         if (config.isShowHologramTotalSize()) {
-            lines.add(plugin.getLangManager().getString("hologram.total_size")
-                    .replace("{total_size}", "%nclaim_total_size_" + coords + "%"));
-
+            lines.add(lang.getString("hologram.total_size").replace("{total_size}", String.valueOf(claim.getTotalChunkCount())));
         }
-
-        long shownLineCount = lines.stream().filter(s -> !s.isEmpty()).count();
-        if (shownLineCount > 1) {
-            lines.add("");
-        }
-
         if (config.isShowHologramEdit()) {
-            lines.add(plugin.getLangManager().getString("hologram.edit"));
+            if (lines.size() > 1) lines.add("");
+            lines.add(lang.getString("hologram.edit"));
         }
-
-
-        return lines.stream()
-                .map(HexUtil::parse)
-                .collect(java.util.stream.Collectors.toList());
+        return String.join("\n", lines);
     }
 
-    private ChunkInfo parseHologramId(String hologramId) {
-        Matcher matcher = HOLOGRAM_ID_PATTERN.matcher(hologramId);
-        if (!matcher.matches()) return null;
-
-        try {
-            String worldName = matcher.group(1);
-            int x = Integer.parseInt(matcher.group(2));
-            int z = Integer.parseInt(matcher.group(3));
-            return new ChunkInfo(worldName, x, z);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    public Set<String> getPendingWorlds() {
-        return new HashSet<>(pendingWorlds);
-    }
-
-    private static class ChunkInfo {
-        final String worldName;
-        final int x;
-        final int z;
-
-        ChunkInfo(String worldName, int x, int z) {
-            this.worldName = worldName;
-            this.x = x;
-            this.z = z;
-        }
+    /** Owner names are cached; call when a claim changes hands. */
+    public void forgetOwnerName(@NotNull UUID owner) {
+        ownerNames.remove(owner);
     }
 }
