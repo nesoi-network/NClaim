@@ -5,7 +5,7 @@ import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.enums.RemoveCause;
 import nesoi.aysihuniks.nclaim.enums.SaleFilter;
 import nesoi.aysihuniks.nclaim.enums.Setting;
-import nesoi.aysihuniks.nclaim.integrations.AnvilManager;
+import nesoi.aysihuniks.nclaim.ui.framework.TextInput;
 import nesoi.aysihuniks.nclaim.ui.claim.ClaimMainMenu;
 import nesoi.aysihuniks.nclaim.ui.claim.management.ClaimManagementMenu;
 import nesoi.aysihuniks.nclaim.ui.shared.BaseMenu;
@@ -18,10 +18,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.guimanager.button.Button;
-import org.nandayo.dapi.util.ItemCreator;
-import org.nandayo.dapi.guimanager.MenuType;
-import org.nandayo.dapi.message.ChannelType;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -53,7 +53,9 @@ public class AdminAllClaimMenu extends BaseMenu {
     }
 
     private void setupMenu() {
-        createInventory(MenuType.CHEST_6_ROWS, getString("title"));
+        // One row of claims (up to 7) fits in 5 rows; a second row under it needs 6.
+        int onPage = Math.max(0, Math.min(CLAIMS_PER_PAGE, getFilteredClaims().size() - page * CLAIMS_PER_PAGE));
+        createInventory(onPage > 7 ? MenuType.CHEST_6_ROWS : MenuType.CHEST_5_ROWS, getString("title"));
 
         addNavigationButton();
         addSortButton();
@@ -61,6 +63,7 @@ public class AdminAllClaimMenu extends BaseMenu {
         addResetButton();
         addDeleteButton();
         addClaimButtons();
+        addStatsButton();
 
         addSaleFilterButton();
 
@@ -192,6 +195,7 @@ public class AdminAllClaimMenu extends BaseMenu {
                 public ItemStack getItem() {
                     return ItemCreator.of(getMaterial("reset_settings"))
                             .name(getString("reset_settings.display_name"))
+                            .lore(getStringList("reset_settings.lore"))
                             .get();
                 }
 
@@ -215,6 +219,7 @@ public class AdminAllClaimMenu extends BaseMenu {
                 public ItemStack getItem() {
                     return ItemCreator.of(getMaterial("delete_selected"))
                             .name(getString("delete_selected.display_name"))
+                            .lore(getStringList("delete_selected.lore"))
                             .get();
                 }
 
@@ -270,6 +275,73 @@ public class AdminAllClaimMenu extends BaseMenu {
         for (int i = startIndex; i < endIndex; i++) {
             addClaimButton(filteredClaims.get(i), i - startIndex);
         }
+        if (filteredClaims.isEmpty()) addEmptyButton();
+    }
+
+    /** Shown in the middle of the claim area when nothing matches (no claims at all, or the filters hide them all). */
+    private void addEmptyButton() {
+        boolean filtered = target != null || saleFilter != SaleFilter.ALL;
+        String key = filtered ? "empty_filtered" : "empty";
+        addButton(new Button() {
+            @Override
+            public @NotNull Set<Integer> getSlots() {
+                return Sets.newHashSet(31);
+            }
+
+            @Override
+            public ItemStack getItem() {
+                return ItemCreator.of(getMaterial(key))
+                        .name(getString(key + ".display_name"))
+                        .lore(getStringList(key + ".lore"))
+                        .get();
+            }
+
+            @Override
+            public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
+                if (filtered) {
+                    MessageType.MENU_REFRESH.playSound(player);
+                    new AdminAllClaimMenu(player, null, true, 0, new ArrayList<>(), SaleFilter.ALL);
+                }
+            }
+        });
+    }
+
+    /** Server wide numbers, always visible at the top. */
+    private void addStatsButton() {
+        addButton(new Button() {
+            @Override
+            public @NotNull Set<Integer> getSlots() {
+                return Sets.newHashSet(4);
+            }
+
+            @Override
+            public ItemStack getItem() {
+                Collection<Claim> all = Claim.getClaims();
+                long chunks = 0, forSale = 0;
+                Set<UUID> owners = new HashSet<>();
+                for (Claim c : all) {
+                    if (c == null) continue;
+                    chunks += c.getAllChunkKeys().size();
+                    if (c.isForSale()) forSale++;
+                    owners.add(c.getOwner());
+                }
+                final long chunkCount = chunks, saleCount = forSale;
+                List<String> lore = new ArrayList<>(getStringList("stats.lore"));
+                lore.replaceAll(s -> s
+                        .replace("{claims}", String.valueOf(all.size()))
+                        .replace("{owners}", String.valueOf(owners.size()))
+                        .replace("{chunks}", String.valueOf(chunkCount))
+                        .replace("{for_sale}", String.valueOf(saleCount)));
+                return ItemCreator.of(getMaterial("stats"))
+                        .name(getString("stats.display_name"))
+                        .lore(lore)
+                        .get();
+            }
+
+            @Override
+            public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
+            }
+        });
     }
 
     private List<Claim> getFilteredClaims() {
@@ -296,7 +368,6 @@ public class AdminAllClaimMenu extends BaseMenu {
     }
 
     private void addClaimButton(Claim claim, int index) {
-        Chunk chunk = claim.getChunk();
         OfflinePlayer owner = Bukkit.getOfflinePlayer(claim.getOwner());
         ClaimSetting settings = claim.getSettings();
 
@@ -322,8 +393,8 @@ public class AdminAllClaimMenu extends BaseMenu {
                 lore.replaceAll(s -> s
                         .replace("{created_at}", NClaim.serializeDate(claim.getCreatedAt()))
                         .replace("{display_slug}", claim.getDisplayName())
-                        .replace("{world}", chunk.getWorld().getName())
-                        .replace("{coordinates}", NClaim.getCoordinates(chunk))
+                        .replace("{world}", claim.getWorldName())
+                        .replace("{coordinates}", NClaim.getCoordinates(claim))
                         .replace("{land_size}", String.valueOf(claim.getLands().size()))
                         .replace("{coop_count}", String.valueOf(claim.getCoopPlayers().size()))
                         .replace("{yes}", String.valueOf(enabledSettings))
@@ -375,10 +446,10 @@ public class AdminAllClaimMenu extends BaseMenu {
 
     private void handleSearch(Player player) {
         MessageType.SEARCH_OPEN.playSound(player);
-        new AnvilManager(player, "Enter a player name",
+        TextInput.open(player, "Enter a player name",
                 (text) -> {
                     if (text == null || text.isEmpty()) {
-                        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.enter_a_player"));
+                        Msg.send(player, NClaim.inst().getLangManager().getString("command.enter_a_player"));
                         MessageType.FAIL.playSound(player);
                         new AdminAllClaimMenu(player, null, sortByNewest, page, selectedClaims, saleFilter);
                         return;
@@ -427,31 +498,8 @@ public class AdminAllClaimMenu extends BaseMenu {
     }
 
     private void teleportToClaimSafely(Player player, Claim claim) {
-        Location claimBlockLocation = claim.getClaimBlockLocation();
-        World world = claimBlockLocation.getWorld();
-        if (world == null) return;
-
-        Location safeLoc = new Location(world,
-                claimBlockLocation.getX() + 0.5,
-                claimBlockLocation.getY() + 1,
-                claimBlockLocation.getZ() + 0.5);
-
-        while (safeLoc.getY() < world.getMaxHeight() && !safeLoc.getBlock().getType().isSolid()) {
-            safeLoc.setY(safeLoc.getY() + 1);
-        }
-
-        if (!safeLoc.getBlock().getType().isSolid()) {
-            safeLoc.setY(world.getHighestBlockYAt(safeLoc) + 1);
-        }
-
-        if (safeLoc.getY() < claimBlockLocation.getY()) {
-            safeLoc.setY(claimBlockLocation.getY() + 1);
-        }
-
-        Bukkit.getScheduler().runTaskLater(NClaim.inst(), () -> {
-            MessageType.TELEPORT.playSound(player);
-            player.teleport(safeLoc);
-        }, 1L);
+        player.closeInventory();
+        NClaim.inst().getClaimService().teleportToClaim(player, claim);
     }
 
     private boolean hasNextPage() {

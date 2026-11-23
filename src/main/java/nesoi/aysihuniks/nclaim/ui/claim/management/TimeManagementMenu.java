@@ -1,5 +1,6 @@
 package nesoi.aysihuniks.nclaim.ui.claim.management;
 
+import nesoi.aysihuniks.nclaim.utils.Numbers;
 import com.google.common.collect.Sets;
 import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.enums.Balance;
@@ -12,11 +13,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.util.ItemCreator;
-import org.nandayo.dapi.guimanager.button.Button;
-import org.nandayo.dapi.guimanager.MenuType;
-import org.nandayo.dapi.message.ChannelType;
-import org.nandayo.dapi.object.DMaterial;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
+import nesoi.aysihuniks.nclaim.utils.Msg;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,7 +58,7 @@ public class TimeManagementMenu extends BaseMenu {
                 List<String> lore = new ArrayList<>(getStringList("claim_info.lore"));
                 lore.replaceAll(s -> s.replace("{time_left}", NClaim.inst().getClaimExpirationManager().getFormattedTimeLeft(claim))
                         .replace("{expires_at}", NClaim.serializeDate(claim.getExpiredAt())));
-                return ItemCreator.of(NClaim.getMaterial(DMaterial.GLOW_ITEM_FRAME, DMaterial.ITEM_FRAME))
+                return ItemCreator.of(getMaterial("claim_info"))
                         .name(getString("claim_info.display_name"))
                         .lore(lore)
                         .get();
@@ -79,14 +80,16 @@ public class TimeManagementMenu extends BaseMenu {
                 List<String> lore = new ArrayList<>(getStringList("confirm.lore"));
                 String priceStr = admin
                         ? NClaim.inst().getGuiLangManager().getString("free")
-                        : String.format("%.2f", finalPrice);
+                        : "$" + Numbers.format(finalPrice);
+                String taxStr = admin ? "0" : "$" + Numbers.format(tax);
 
                 lore.replaceAll(s -> s.replace("{price}", priceStr)
+                        .replace("{tax}", taxStr)
                         .replace("{d}", String.valueOf(days))
                         .replace("{h}", String.valueOf(hours))
                         .replace("{m}", String.valueOf(minutes)));
 
-                return ItemCreator.of(Material.BLUE_ICE)
+                return ItemCreator.of(getMaterial("confirm"))
                         .name(getString("confirm.display_name"))
                         .lore(lore)
                         .get();
@@ -95,7 +98,7 @@ public class TimeManagementMenu extends BaseMenu {
             @Override
             public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
                 if (days == 0 && hours == 0 && minutes == 0) {
-                    ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("claim.time.no_time_selected"));
+                    Msg.send(player, NClaim.inst().getLangManager().getString("claim.time.no_time_selected"));
                     MessageType.FAIL.playSound(player);
                     return;
                 }
@@ -105,29 +108,10 @@ public class TimeManagementMenu extends BaseMenu {
                     double tax = totalPrice * NClaim.inst().getNconfig().getTimeExtensionTaxRate();
                     double finalPrice = totalPrice + tax;
 
-                    if (NClaim.inst().getBalanceSystem() == Balance.PLAYERDATA) {
-                        User user = User.getUser(player.getUniqueId());
-                        if (user == null) {
-                            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.player_data_not_found"));
-                            MessageType.FAIL.playSound(player);
-                            return;
-                        }
-
-                        if (user.getBalance() < finalPrice) {
-                            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.balance.not_enough"));
-                            MessageType.FAIL.playSound(player);
-                            return;
-                        }
-
-                        user.addBalance(-finalPrice);
-                    } else {
-                        if (NClaim.inst().getEconomy().getBalance(player) < finalPrice) {
-                            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.balance.not_enough"));
-                            MessageType.FAIL.playSound(player);
-                            return;
-                        }
-
-                        NClaim.inst().getEconomy().withdrawPlayer(player, finalPrice);
+                    if (!NClaim.inst().getEconomyService().withdraw(player, finalPrice)) {
+                        Msg.send(player, NClaim.inst().getLangManager().getString("command.balance.not_enough"));
+                        MessageType.FAIL.playSound(player);
+                        return;
                     }
                 }
 
@@ -135,9 +119,9 @@ public class TimeManagementMenu extends BaseMenu {
 
                 String priceStr = admin
                         ? NClaim.inst().getGuiLangManager().getString("free")
-                        : String.format("%.2f", calculateTotalPrice() + calculateTotalPrice() * NClaim.inst().getNconfig().getTimeExtensionTaxRate());
+                        : "$" + Numbers.format(calculateTotalPrice() + calculateTotalPrice() * NClaim.inst().getNconfig().getTimeExtensionTaxRate());
 
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.expiration_extended")
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.expiration_extended")
                         .replace("{d}", String.valueOf(days))
                         .replace("{h}", String.valueOf(hours))
                         .replace("{m}", String.valueOf(minutes))
@@ -156,7 +140,7 @@ public class TimeManagementMenu extends BaseMenu {
 
             @Override
             public ItemStack getItem() {
-                return ItemCreator.of(Material.OAK_DOOR)
+                return ItemCreator.of(getMaterialFullPath("back"))
                         .name(NClaim.inst().getGuiLangManager().getString("back.display_name"))
                         .get();
             }
@@ -180,7 +164,7 @@ public class TimeManagementMenu extends BaseMenu {
                 lore.replaceAll(s -> s.replace("{days_status}", timeUnit == 0 ? "&e" + getString("days_status") : "&7" + getString("days_status"))
                         .replace("{hours_status}", timeUnit == 1 ? "&e" + getString("hours_status") : "&7" + getString("hours_status"))
                         .replace("{minutes_status}", timeUnit == 2 ? "&e" + getString("minutes_status") : "&7" + getString("minutes_status")));
-                return ItemCreator.of(NClaim.getMaterial(DMaterial.IRON_CHAIN, DMaterial.CHAIN))
+                return ItemCreator.of(java.util.Optional.ofNullable(Material.matchMaterial("IRON_CHAIN")).orElse(Material.matchMaterial("CHAIN")))
                         .name(getString("select_time_unit.display_name"))
                         .lore(lore)
                         .get();
@@ -212,9 +196,10 @@ public class TimeManagementMenu extends BaseMenu {
 
             @Override
             public ItemStack getItem() {
-                return ItemCreator.of(Material.LIME_CONCRETE)
+                return ItemCreator.of(getMaterial("add_one"))
                         .name(getString("add_one.display_name")
                                 .replace("{unit}", getTimeUnitString()))
+                        .lore(getStringList("add_one.lore"))
                         .get();
             }
 
@@ -234,9 +219,10 @@ public class TimeManagementMenu extends BaseMenu {
 
             @Override
             public ItemStack getItem() {
-                return ItemCreator.of(Material.GREEN_CONCRETE)
+                return ItemCreator.of(getMaterial("add_six"))
                         .name(getString("add_six.display_name")
                                 .replace("{unit}", getTimeUnitString()))
+                        .lore(getStringList("add_six.lore"))
                         .get();
             }
 
@@ -256,9 +242,10 @@ public class TimeManagementMenu extends BaseMenu {
 
             @Override
             public ItemStack getItem() {
-                return ItemCreator.of(Material.PINK_CONCRETE)
+                return ItemCreator.of(getMaterial("subtract_one"))
                         .name(getString("subtract_one.display_name")
                                 .replace("{unit}", getTimeUnitString()))
+                        .lore(getStringList("subtract_one.lore"))
                         .get();
             }
 
@@ -278,9 +265,10 @@ public class TimeManagementMenu extends BaseMenu {
 
             @Override
             public ItemStack getItem() {
-                return ItemCreator.of(Material.RED_CONCRETE)
+                return ItemCreator.of(getMaterial("subtract_six"))
                         .name(getString("subtract_six.display_name")
                                 .replace("{unit}", getTimeUnitString()))
+                        .lore(getStringList("subtract_six.lore"))
                         .get();
             }
 

@@ -1,5 +1,6 @@
 package nesoi.aysihuniks.nclaim.ui.claim;
 
+import nesoi.aysihuniks.nclaim.utils.Numbers;
 import com.google.common.collect.Sets;
 import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.enums.Permission;
@@ -13,10 +14,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.guimanager.button.Button;
-import org.nandayo.dapi.message.ChannelType;
-import org.nandayo.dapi.util.ItemCreator;
-import org.nandayo.dapi.guimanager.MenuType;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
+import nesoi.aysihuniks.nclaim.utils.Msg;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
 
 import java.util.*;
 
@@ -39,10 +40,10 @@ public class ClaimListMenu extends BaseMenu {
         this.player = player;
         this.page = page;
 
-        User user = User.getUser(player.getUniqueId());
+        User user = User.getOrLoad(player.getUniqueId());
         if (user.getPlayerClaims().isEmpty() && user.getCoopClaims().isEmpty()) {
             player.closeInventory();
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("claim.not_found"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("claim.not_found"));
             MessageType.WARN.playSound(player);
             return;
         }
@@ -158,14 +159,14 @@ public class ClaimListMenu extends BaseMenu {
 
         for (int i = startIndex, slotIndex = 0; i < endIndex; i++, slotIndex++) {
             Claim claim = claimsToShow.get(i);
-            boolean isOwner = User.getUser(player.getUniqueId()).getPlayerClaims().contains(claim);
+            boolean isOwner = User.getOrLoad(player.getUniqueId()).getPlayerClaims().contains(claim);
             addClaimButton(claim, claimSlots[slotIndex], isOwner);
         }
     }
 
     private List<Claim> getClaimsToShow() {
         User.loadUser(player.getUniqueId());
-        User user = User.getUser(player.getUniqueId());
+        User user = User.getOrLoad(player.getUniqueId());
         List<Claim> claims = new ArrayList<>();
         
         switch (currentListType) {
@@ -185,17 +186,16 @@ public class ClaimListMenu extends BaseMenu {
 
     private void addClaimButton(Claim claim, int slot, boolean isOwner) {
         String buttonPath = isOwner ? "own_claims" : "coop_claims";
-        Chunk chunk = claim.getChunk();
 
         List<String> lore = new ArrayList<>(getStringList(buttonPath + ".lore"));
-        lore.replaceAll(s -> s.replace("{world}", chunk.getWorld().getName())
-                .replace("{coordinates}", NClaim.getCoordinates(chunk))
+        lore.replaceAll(s -> s.replace("{world}", claim.getWorldName())
+                .replace("{coordinates}", NClaim.getCoordinates(claim))
                 .replace("{owner}", Bukkit.getOfflinePlayer(claim.getOwner()).getName()));
 
         if (NClaim.inst().getNconfig().isSellEnabled() && claim.isForSale()) {
             List<String> saleLore = getStringList("claim_list_menu.on_sale_lore");
             for (String s : saleLore) {
-                lore.add(s.replace("{price}", String.valueOf(claim.getSalePrice())));
+                lore.add(s.replace("{price}", Numbers.format(claim.getSalePrice())));
             }
         }
 
@@ -221,7 +221,7 @@ public class ClaimListMenu extends BaseMenu {
                 if (isOwner || NClaim.inst().getClaimCoopManager().hasPermission(player, claim, Permission.OPEN_CLAIM_MENU)) {
                     new ClaimManagementMenu(player, claim, false);
                 } else{
-                    ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
+                    Msg.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
                 }
             }
         });

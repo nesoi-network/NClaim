@@ -1,42 +1,70 @@
 package nesoi.aysihuniks.nclaim.ui.claim.management;
 
-import com.google.common.collect.Sets;
-import lombok.Getter;
 import nesoi.aysihuniks.nclaim.NClaim;
+import nesoi.aysihuniks.nclaim.model.ChunkKey;
+import nesoi.aysihuniks.nclaim.model.Claim;
+import nesoi.aysihuniks.nclaim.service.ClaimService;
+import nesoi.aysihuniks.nclaim.service.EconomyService;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
 import nesoi.aysihuniks.nclaim.ui.shared.BaseMenu;
 import nesoi.aysihuniks.nclaim.ui.shared.ConfirmMenu;
-import nesoi.aysihuniks.nclaim.model.Claim;
 import nesoi.aysihuniks.nclaim.utils.MessageType;
-import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.nandayo.dapi.guimanager.button.Button;
-import org.nandayo.dapi.util.ItemCreator;
-import org.nandayo.dapi.guimanager.MenuType;
 
-import java.util.*;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
+/**
+ * Chunk map around a claim; uses coordinates only, so it never loads chunks. Clicks go by cell
+ * state, not item material, so guis.yml can use any material (issue #14).
+ */
 public class LandExpansionMenu extends BaseMenu {
 
+    /** State of a grid cell; the name is also the guis.yml key of its item. */
+    private enum CellState {
+        EXPAND("expand"),
+        CLAIMED("claimed"),
+        CLAIMED_ANOTHER_PLAYER("claimed_another_player"),
+        NOT_ADJACENT("not_adjacent");
+
+        final String path;
+
+        CellState(String path) {
+            this.path = path;
+        }
+    }
+
+    private enum Direction {
+        LEFT(46, +1), RIGHT(52, -1), UP(50, +9), DOWN(48, -9);
+
+        final int slot;
+        final int slotAddition;
+
+        Direction(int slot, int slotAddition) {
+            this.slot = slot;
+            this.slotAddition = slotAddition;
+        }
+    }
+
     private final @NotNull Claim claim;
-    private final @NotNull Collection<Chunk> allClaimChunks;
     private final boolean admin;
     private final int baseSlot;
 
     private LandExpansionMenu(@NotNull Player player, @NotNull Claim claim, boolean admin, int baseSlot) {
         super("claim_expand_menu");
         this.claim = claim;
-        this.allClaimChunks = claim.getAllChunks();
         this.admin = admin;
         this.baseSlot = baseSlot;
         setupMenu(player);
     }
+
     public LandExpansionMenu(@NotNull Player player, @NotNull Claim claim, boolean admin) {
         this(player, claim, admin, 22);
     }
@@ -44,10 +72,10 @@ public class LandExpansionMenu extends BaseMenu {
     private void setupMenu(Player player) {
         createInventory(MenuType.CHEST_6_ROWS, getString("title"));
 
-        this.addButton(new Button() {
+        addButton(new Button() {
             @Override
             public @NotNull Set<Integer> getSlots() {
-                return Sets.newHashSet(baseSlot);
+                return Set.of(baseSlot);
             }
 
             @Override
@@ -65,246 +93,142 @@ public class LandExpansionMenu extends BaseMenu {
             }
         });
 
-        for(Scroller scroller : Scroller.SCROLLERS) {
+        for (Direction direction : Direction.values()) {
             addButton(new Button() {
                 @Override
                 protected @NotNull Set<Integer> getSlots() {
-                    return Sets.newHashSet(scroller.getSlot());
+                    return Set.of(direction.slot);
                 }
 
                 @Override
-                public @Nullable ItemStack getItem() {
-                    String directionKey = "scroll_button.directions." + scroller.getType().name();
-                    String localizedDirection = NClaim.inst().getGuiLangManager().getString(directionKey);
+                public ItemStack getItem() {
+                    String localized = NClaim.inst().getGuiLangManager().getString("scroll_button.directions." + direction.name());
                     return ItemCreator.of(Material.OAK_BUTTON)
-                            .name(getString("scroll_button.display_name").replace("{direction}", localizedDirection))
+                            .name(getString("scroll_button.display_name").replace("{direction}", localized == null ? direction.name() : localized))
                             .get();
                 }
 
                 @Override
                 public void onClick(@NotNull Player p, @NotNull ClickType clickType) {
-                    if(!canScroll(scroller)) return;
-                    new LandExpansionMenu(p, claim, admin, baseSlot + scroller.getSlotAddition());
+                    if (!canScroll(direction)) return;
+                    new LandExpansionMenu(p, claim, admin, baseSlot + direction.slotAddition);
                 }
             });
         }
 
+        float yaw = (player.getLocation().getYaw() % 360 + 360) % 360;
         for (int row = 0; row < 5; row++) {
-            for (int col = 0; col < 9; col++) {
+            for (int col = 1; col < 8; col++) {
                 int slot = row * 9 + col;
-                if (slot == baseSlot || slot % 9 == 0 || slot % 9 == 8) continue;
-                addChunkButton(slot, player);
+                if (slot != baseSlot) addChunkButton(slot, chunkFromSlot(slot, yaw));
             }
         }
         displayTo(player);
     }
 
-    private void addChunkButton(int slot, Player player) {
-        float yaw = player.getLocation().getYaw();
-        Chunk thatChunk = findChunkFromSlot(slot, (yaw % 360 + 360) % 360);
-        Claim thatClaim = Claim.getClaim(thatChunk);
-
-        String configPath;
-        ItemStack material;
-        boolean clickable = false;
-
-        if (admin) {
-            if (thatClaim == null) {
-                configPath = "expand";
-                material = getMaterial("expand");
-                clickable = true;
-            } else {
-                if (thatClaim.equals(this.claim)) {
-                    configPath = "claimed";
-                    material = getMaterial("claimed");
-                } else {
-                    configPath = "claimed_another_player";
-                    material = getMaterial("claimed_another_player");
-                }
-                clickable = true;
-            }
-        } else {
-            if (!isAdjacentToClaim(thatChunk)) {
-                configPath = "not_adjacent";
-                material = getMaterial("not_adjacent");
-            } else if (thatClaim == null) {
-                configPath = "expand";
-                material = getMaterial("expand");
-                clickable = true;
-            } else if (claim.getLands().contains(NClaim.serializeChunk(thatChunk))) {
-                configPath = "claimed";
-                material = getMaterial("claimed");
-                clickable = true;
-            } else {
-                configPath = "claimed_another_player";
-                material = getMaterial("claimed_another_player");
-            }
-        }
-
-        addButton(createButton(slot, configPath, material, thatChunk, clickable));
+    private CellState stateOf(ChunkKey key) {
+        Claim there = Claim.claims.getAt(key.world(), key.x(), key.z());
+        if (there != null) return there.equals(claim) ? CellState.CLAIMED : CellState.CLAIMED_ANOTHER_PLAYER;
+        // Same rule as ClaimService#buyLand, so the menu never offers a chunk that cannot be bought.
+        if (!admin && !ClaimService.isAdjacent(claim, key)) return CellState.NOT_ADJACENT;
+        return CellState.EXPAND;
     }
 
-    private Button createButton(int slot, String configPath, ItemStack material, Chunk thatChunk, boolean clickable) {
-        return new Button() {
+    private void addChunkButton(int slot, ChunkKey key) {
+        CellState state = stateOf(key);
+        addButton(new Button() {
             @Override
             public @NotNull Set<Integer> getSlots() {
-                return Sets.newHashSet(slot);
+                return Set.of(slot);
             }
 
             @Override
             public ItemStack getItem() {
-                double landPrice = calculateChunkPrice(thatChunk);
-                String displayName = getString(configPath + ".display_name");
-                List<String> lore = new ArrayList<>(getStringList(configPath + ".lore"));
-                if (configPath.equals("expand")) {
-                    String priceStr = admin ? NClaim.inst().getGuiLangManager().getString("free") : landPrice < 0 ? "N/A" : String.valueOf(landPrice);
-                    lore.replaceAll(s -> s.replace("{price}", priceStr));
+                List<String> lore = new ArrayList<>(getStringList(state.path + ".lore"));
+                if (state == CellState.EXPAND) {
+                    String price = priceText();
+                    lore.replaceAll(s -> s.replace("{price}", price));
                 }
-                return ItemCreator.of(material)
-                        .name(displayName)
+                return ItemCreator.of(getMaterial(state.path))
+                        .name(getString(state.path + ".display_name"))
                         .lore(lore)
                         .get();
             }
 
             @Override
             public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
-                if (!clickable) return;
-                if (clickType.isLeftClick() && getInvItem(slot).getType() == Material.BROWN_WOOL) {
-                    Consumer<String> onFinish = (result) -> {
-                        if ("confirmed".equals(result)) {
-                            NClaim.inst().getClaimService().buyLand(claim, player, thatChunk, admin);
-                            new LandExpansionMenu(player, claim, admin);
-                        } else if ("declined".equals(result)) {
-                            new LandExpansionMenu(player, claim, admin);
+                switch (state) {
+                    case EXPAND -> {
+                        if (clickType.isLeftClick()) confirmBuy(player, key);
+                        else if (clickType.isRightClick()) {
+                            player.closeInventory();
+                            NClaim.inst().getClaimVisualizerService().showClaimBorders(player, key);
                         }
-                    };
-
-                    new ConfirmMenu(player,
-                            NClaim.inst().getGuiLangManager().getString("confirm_menu.children.claim_expand.display_name"),
-                            NClaim.inst().getGuiLangManager().getStringList("confirm_menu.children.claim_expand.lore")
-                                    .stream()
-                                    .map(s -> s.replace("{price}", String.valueOf(calculateChunkPrice(thatChunk))))
-                                    .collect(Collectors.toList()),
-                            onFinish);
-                } else if (clickType.isRightClick() && getInvItem(slot).getType() == Material.GREEN_WOOL) {
-                    if (claim.getChunk().equals(thatChunk)) {
-                        return;
                     }
-                    Consumer<String> onFinish = (result) -> {
-                        if ("confirmed".equals(result)) {
-                            NClaim.inst().getClaimService().unClaimLand(claim, player, thatChunk);
-                            new LandExpansionMenu(player, claim, admin);
-                        } else {
-                            new LandExpansionMenu(player, claim, admin);
-                        }
-                    };
-
-                    new ConfirmMenu(player,
-                            NClaim.inst().getGuiLangManager().getString("confirm_menu.children.land_unclaim.display_name"),
-                            NClaim.inst().getGuiLangManager().getStringList("confirm_menu.children.land_unclaim.lore"),
-                            onFinish);
-
-                }
-                else if (clickType.isRightClick() && getInvItem(slot).getType() == Material.BROWN_WOOL) {
-                    player.closeInventory();
-                    NClaim.inst().getClaimVisualizerService().showClaimBorders(player, thatChunk);
+                    case CLAIMED -> {
+                        if (clickType.isRightClick() && !claim.isMainChunk(key.world(), key.x(), key.z())) confirmUnclaim(player, key);
+                    }
+                    case CLAIMED_ANOTHER_PLAYER, NOT_ADJACENT -> MessageType.FAIL.playSound(player);
                 }
             }
+        });
+    }
+
+    private String priceText() {
+        if (admin) return NClaim.inst().getGuiLangManager().getString("free");
+        double price = NClaim.inst().getClaimService().calculateLandPrice(claim);
+        return price < 0 ? "N/A" : EconomyService.format(price);
+    }
+
+    private void confirmBuy(Player player, ChunkKey key) {
+        String price = priceText();
+        new ConfirmMenu(player,
+                NClaim.inst().getGuiLangManager().getString("confirm_menu.children.claim_expand.display_name"),
+                NClaim.inst().getGuiLangManager().getStringList("confirm_menu.children.claim_expand.lore")
+                        .stream().map(s -> s.replace("{price}", price)).toList(),
+                result -> {
+                    if ("confirmed".equals(result)) NClaim.inst().getClaimService().buyLand(claim, player, key, admin);
+                    new LandExpansionMenu(player, claim, admin, baseSlot);
+                });
+    }
+
+    private void confirmUnclaim(Player player, ChunkKey key) {
+        new ConfirmMenu(player,
+                NClaim.inst().getGuiLangManager().getString("confirm_menu.children.land_unclaim.display_name"),
+                NClaim.inst().getGuiLangManager().getStringList("confirm_menu.children.land_unclaim.lore"),
+                result -> {
+                    if ("confirmed".equals(result)) NClaim.inst().getClaimService().unClaimLand(claim, player, key);
+                    new LandExpansionMenu(player, claim, admin, baseSlot);
+                });
+    }
+
+    /** Grid cell -> chunk, rotated so "up" in the menu is the direction the player faces. */
+    private ChunkKey chunkFromSlot(int slot, float yaw) {
+        int deltaX = slot % 9 - baseSlot % 9;
+        int deltaZ = slot / 9 - baseSlot / 9;
+        int dx, dz;
+        if (yaw >= 315 || yaw < 45) {        // facing south
+            dx = -deltaX;
+            dz = -deltaZ;
+        } else if (yaw < 135) {              // facing west
+            dx = deltaZ;
+            dz = -deltaX;
+        } else if (yaw < 225) {              // facing north
+            dx = deltaX;
+            dz = deltaZ;
+        } else {                             // facing east
+            dx = -deltaZ;
+            dz = deltaX;
+        }
+        return new ChunkKey(claim.getWorldName(), claim.getChunkX() + dx, claim.getChunkZ() + dz);
+    }
+
+    private boolean canScroll(Direction direction) {
+        return switch (direction) {
+            case LEFT -> baseSlot % 9 < 7;
+            case RIGHT -> baseSlot % 9 > 1;
+            case UP -> baseSlot / 9 < 4;
+            case DOWN -> baseSlot / 9 > 0;
         };
-    }
-
-    private double calculateChunkPrice(Chunk targetChunk) {
-        int currentChunkCount = 1 + claim.getLands().size();
-        int nextChunkNumber = currentChunkCount + 1;
-
-        return NClaim.inst().getNconfig().getTieredPrice(nextChunkNumber);
-    }
-
-    private boolean isAdjacentToClaim(@NotNull Chunk thatChunk) {
-        return allClaimChunks.stream()
-                .anyMatch(c -> c != null && NClaim.isChunkAdjacent(c, thatChunk, 2));
-    }
-
-    private Chunk findChunkFromSlot(int slot, float yaw) {
-        int chunkX = claim.getChunk().getX();
-        int chunkZ = claim.getChunk().getZ();
-
-        int centerRow = baseSlot / 9;
-        int centerCol = baseSlot % 9;
-
-        int row = slot / 9;
-        int col = slot % 9;
-
-        int deltaX = col - centerCol;
-        int deltaZ = row - centerRow;
-        // note: chunk coords increase toward south-east
-
-        int rotatedX, rotatedZ;
-        // SOUTH
-        if (yaw >= 315 || yaw < 45) {
-            rotatedX = -deltaX;
-            rotatedZ = -deltaZ;
-        }
-        // WEST
-        else if (yaw >= 45 && yaw < 135) {
-            rotatedX = deltaZ;
-            rotatedZ = -deltaX;
-        }
-        // NORTH
-        else if (yaw >= 135 && yaw < 225) {
-            rotatedX = deltaX;
-            rotatedZ = deltaZ;
-        }
-        // EAST
-        else {
-            rotatedX = -deltaZ;
-            rotatedZ = deltaX;
-        }
-
-        chunkX += rotatedX;
-        chunkZ += rotatedZ;
-
-        return claim.getChunk().getWorld().getChunkAt(chunkX, chunkZ);
-    }
-
-
-    private boolean canScroll(Scroller scroller) {
-        if(scroller == null) return false;
-        switch (scroller.getType()) {
-            case LEFT:
-                return baseSlot % 9 < 7;
-            case RIGHT:
-                return baseSlot % 9 > 1;
-            case UP:
-                return baseSlot / 9 < 4;
-            case DOWN:
-                return baseSlot / 9 > 0;
-        }
-        return false;
-    }
-
-
-    @Getter
-    private static class Scroller {
-
-        public static final Scroller LEFT = new Scroller(Type.LEFT, 46, +1);
-        public static final Scroller RIGHT = new Scroller(Type.RIGHT, 52, -1);
-        public static final Scroller UP = new Scroller(Type.UP, 50, +9);
-        public static final Scroller DOWN = new Scroller(Type.DOWN, 48, -9);
-
-        public static final Scroller[] SCROLLERS = new Scroller[] {LEFT, RIGHT, UP, DOWN};
-
-
-        private final Type type;
-        private final int slot;
-        private final int slotAddition;
-        protected Scroller(Type type, int slot, int slotAddition) {
-            this.type = type;
-            this.slot = slot;
-            this.slotAddition = slotAddition;
-        }
-
-
-        enum Type { LEFT, RIGHT, UP, DOWN}
     }
 }

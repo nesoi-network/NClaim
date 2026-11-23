@@ -1,19 +1,20 @@
 package nesoi.aysihuniks.nclaim.ui.claim;
 
+import nesoi.aysihuniks.nclaim.utils.Numbers;
 import com.google.common.collect.Sets;
 import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.enums.SaleFilter;
-import nesoi.aysihuniks.nclaim.integrations.AnvilManager;
+import nesoi.aysihuniks.nclaim.ui.framework.TextInput;
 import nesoi.aysihuniks.nclaim.ui.claim.admin.AdminAllClaimMenu;
 import nesoi.aysihuniks.nclaim.ui.shared.BaseMenu;
 import nesoi.aysihuniks.nclaim.ui.shared.ConfirmMenu;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.util.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
-import org.nandayo.dapi.guimanager.button.Button;
-import org.nandayo.dapi.guimanager.MenuType;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +51,7 @@ public class ClaimMainMenu extends BaseMenu {
             public ItemStack getItem() {
 
                 List<String> lore = getStringList("buy_claim.lore");
-                lore.replaceAll(l -> l.replace("{price}", String.valueOf(NClaim.inst().getNconfig().getClaimBuyPrice())));
+                lore.replaceAll(l -> l.replace("{price}", Numbers.format(NClaim.inst().getNconfig().getClaimBuyPrice())));
                 
                 return ItemCreator.of(getMaterial("buy_claim"))
                         .name(getString("buy_claim.display_name"))
@@ -75,7 +76,7 @@ public class ClaimMainMenu extends BaseMenu {
             if ("confirmed".equals(result)) {
                 player.closeInventory();
 
-                new AnvilManager(player, getString("enter_a_name_title"), (text) -> {
+                TextInput.open(player, getString("enter_a_name_title"), (text) -> {
                     String name = text == null ? null : text.trim();
                     if (name != null && name.isEmpty()) name = null;
 
@@ -95,7 +96,7 @@ public class ClaimMainMenu extends BaseMenu {
                 NClaim.inst().getGuiLangManager().getString("confirm_menu",  "children.buy_new_claim.display_name"),
                 NClaim.inst().getGuiLangManager().getStringList("confirm_menu", "children.buy_new_claim.lore")
                         .stream()
-                        .map(s -> s.replace("{price}", String.valueOf(NClaim.inst().getNconfig().getClaimBuyPrice())))
+                        .map(s -> s.replace("{price}", Numbers.format(NClaim.inst().getNconfig().getClaimBuyPrice())))
                         .collect(Collectors.toList()),
                 onFinish);
     }
