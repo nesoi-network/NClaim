@@ -1,20 +1,23 @@
+# Claim blocks players can buy for their claim (claim block menu).
+# Admins can also add, re-price and remove blocks in game: shift + right click a claim block,
+# then open "Claim Block" and click an empty white pane.
+#
+# The default claim block (config.yml: claim_settings.default_claim_block_type) is always
+# listed for free and does not need an entry here.
+#
+#   display_name: name shown in the menu
+#   price:        paid once per claim to unlock the block
+#   permission:   optional, only players with it can pick the block
+#   enabled:      optional, false hides the block (default true)
+#   lore:         optional, replaces the "locked" lore of guis.yml for this block
+#                 {balance} = player's balance, {cost} = price,
+#                 {need_balance} = what the player has towards the price, e.g. "{need_balance}/{cost}" -> 300/1.5k
 claim_blocks:
-  DIAMOND_BLOCK: # Block type
+  DIAMOND_BLOCK:
     display_name: "Diamond Block"
-    permission: "nclaim.claim_block.diamond_block" # Optional permission check
+    permission: "nclaim.claim_block.diamond_block"
     price: 1500
-    lore:
-      - ""
-      - "&eCost: {cost}/{need_balance}"
-      - ""
-      - "&eClick to purchase"
   EMERALD_BLOCK:
     display_name: "Emerald Block"
-    enabled: false # Optionally, if a false block doesn't show in gui, the default value is true.
+    enabled: false
     price: 2000
-    lore:
-      - ""
-      - "&eCost: {cost}/{need_balance}"
-      -
-      - "&eClick to purchase"
-    # Automatically hooking the block price and player balance.
