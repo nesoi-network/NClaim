@@ -1,24 +1,36 @@
 package nesoi.aysihuniks.nclaim.integrations;
 
+import nesoi.aysihuniks.nclaim.utils.Numbers;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import nesoi.aysihuniks.nclaim.NClaim;
-import nesoi.aysihuniks.nclaim.enums.Balance;
-import nesoi.aysihuniks.nclaim.model.ChunkAndClaim;
-import nesoi.aysihuniks.nclaim.model.ChunkValueResult;
+import nesoi.aysihuniks.nclaim.model.ChunkKey;
 import nesoi.aysihuniks.nclaim.model.Claim;
-import nesoi.aysihuniks.nclaim.model.User;
+import nesoi.aysihuniks.nclaim.service.EconomyService;
 import org.bukkit.Bukkit;
-import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+/**
+ * PlaceholderAPI expansion. Reads cached data only, so it is safe from any thread. Chunk
+ * placeholders take an optional {@code _<world>_<x>_<z>} suffix (world names may contain
+ * underscores), defaulting to the player's chunk.
+ */
 public class Expansion extends PlaceholderExpansion {
+
+    /** {@code <prefix>_<world>_<chunkX>_<chunkZ>} */
+    private static final Pattern LOCATED = Pattern.compile("^(.+?)_(.+)_(-?\\d+)_(-?\\d+)$");
+    /** Config sections that must never be exposed through %nclaim_get_...%. */
+    private static final List<String> HIDDEN_CONFIG = List.of("database", "webhook_settings");
+
     private final NClaim plugin;
 
     public Expansion(NClaim plugin) {
@@ -37,7 +49,7 @@ public class Expansion extends PlaceholderExpansion {
 
     @Override
     public @NotNull String getVersion() {
-        return "1.0";
+        return plugin.getPluginMeta().getVersion();
     }
 
     @Override
@@ -46,339 +58,166 @@ public class Expansion extends PlaceholderExpansion {
     }
 
     @Override
-    public @Nullable String onPlaceholderRequest(Player player, @NotNull String params) {
-        if (params.isEmpty()) {
-            return null;
+    public @Nullable String onRequest(@Nullable OfflinePlayer offline, @NotNull String params) {
+        Player player = offline != null ? offline.getPlayer() : null;
+        if (params.isEmpty()) return null;
+
+        switch (params) {
+            case "player_balance":
+                return offline == null ? null : EconomyService.format(plugin.getEconomyService().balance(offline));
+            case "owner": {
+                Claim claim = here(player);
+                if (claim == null) return lang("claim.no_owner");
+                return lang("claim.owner").replace("{owner}", name(claim.getOwner()));
+            }
+            case "claim_expiry": {
+                Claim claim = here(player);
+                return claim == null ? "N/A" : plugin.getClaimExpirationManager().getFormattedTimeLeft(claim);
+            }
+            case "claim_count":
+                return offline == null ? null : String.valueOf(countOwned(offline.getUniqueId()));
+            case "coop_count":
+                if (player == null) return null;
+                return String.valueOf(countCoop(player.getUniqueId()));
+            case "total_value":
+                return offline == null ? null : Numbers.format(totalValue(offline.getUniqueId()));
+            case "total_chunks":
+                return offline == null ? null : String.valueOf(totalChunks(offline.getUniqueId()));
+            case "total_value_raw":
+                return offline == null ? null : String.valueOf(totalValue(offline.getUniqueId()));
+            default:
+                break;
         }
 
-        if (params.equals("player_balance")) {
-            return handlePlayerBalance(player);
-        }
-
-        if (params.startsWith("get_")) {
-            return handleConfigPlaceholder(params);
-        }
-
-        if (params.startsWith("claim_main_value")) {
-            return handleClaimMainValue(params, player);
-        }
-
-        if (params.startsWith("claim_total_value")) {
-            return handleClaimTotalValue(params, player);
-        }
-
+        if (params.startsWith("get_")) return config(params);
         if (params.startsWith("block_value_")) {
-            return handleBlockValue(params);
+            Material material = Material.matchMaterial(params.substring("block_value_".length()));
+            return material == null ? "Invalid material" : String.valueOf(plugin.getBlockValueManager().getBlockValue(material));
+        }
+        if (params.startsWith("claim_count_")) {
+            return String.valueOf(countOwned(Bukkit.getOfflinePlayer(params.substring("claim_count_".length())).getUniqueId()));
+        }
+        if (params.startsWith("coop_count_") && !LOCATED.matcher(params).matches()) {
+            return String.valueOf(countCoop(Bukkit.getOfflinePlayer(params.substring("coop_count_".length())).getUniqueId()));
         }
 
-        if (params.startsWith("sale_status")) {
-            return handleSaleStatus(params, player);
+        for (String prefix : List.of("claim_main_value", "claim_total_value", "sale_status", "display_name",
+                "expiration", "owner", "coop_count", "total_size")) {
+            if (!params.equals(prefix) && !params.startsWith(prefix + "_")) continue;
+            Target target = target(prefix, params, player);
+            if (target.claim == null) return prefix.equals("sale_status") ? "" : "Claim not found";
+            return claimValue(prefix, target.claim, target.key);
         }
-
-        if (params.startsWith("display_name_")) {
-            return handleDisplayName(params);
-        }
-
-        if (params.equals("coop_count") || (params.startsWith("coop_count_") && params.split("_").length <= 3)) {
-            return handleCoopCount(params, player);
-        }
-        if (params.equals("claim_count") || params.startsWith("claim_count_") && params.split("_").length <= 3) {
-            return handleClaimCount(params, player);
-        }
-
-        if (params.startsWith("expiration_") || params.startsWith("owner_") ||
-                params.startsWith("coop_count") || params.startsWith("total_size")) {
-            return handleClaimInfo(params, player);
-        }
-
-        if (params.equals("owner")) {
-            return handleCurrentChunkOwner(player);
-        }
-
-        if (params.equals("claim_expiry")) {
-            return handlePersonalExpiry(player);
-        }
-
         return null;
     }
 
-    private @Nullable String handlePlayerBalance(Player player) {
-        if (player == null) return null;
-        if (NClaim.inst().getBalanceSystem() == Balance.VAULT) {
-            return String.valueOf(NClaim.inst().getEconomy().getBalance(player));
-        } else {
-            return String.valueOf(User.getUser(player.getUniqueId()).getBalance());
-        }
+    /* ---------------- claim placeholders ---------------- */
+
+    private record Target(@Nullable Claim claim, @Nullable ChunkKey key) {
     }
 
-    private @Nullable String handleConfigPlaceholder(String params) {
-        String[] parts = params.split("_");
-        if (parts.length < 3) {
-            return "Invalid config placeholder format";
+    private Target target(String prefix, String params, @Nullable Player player) {
+        if (params.equals(prefix)) {
+            if (player == null) return new Target(null, null);
+            ChunkKey key = ChunkKey.of(player.getLocation());
+            return new Target(Claim.claims.getAt(player.getLocation()), key);
         }
-
-        String dataType = parts[1];
-        String path = parts[2];
-
-        if ("string".equals(dataType)) {
-            return plugin.getConfigManager().getString(path, "Null");
-        } else if ("int".equals(dataType)) {
-            return String.valueOf(plugin.getConfigManager().getInt(path, 0));
-        } else if ("boolean".equals(dataType)) {
-            return String.valueOf(plugin.getConfigManager().getBoolean(path, false));
-        } else if ("list".equals(dataType)) {
-            return handleListConfig(parts, path);
-        } else {
-            return "Unknown config data type: " + dataType;
-        }
-    }
-
-    private String handleListConfig(String[] parts, String path) {
-        if (parts.length < 4) {
-            return "Invalid list placeholder: Index required";
+        Matcher m = LOCATED.matcher(params);
+        if (!m.matches() || !m.group(1).equals(prefix)) {
+            // coop_count_<player> style placeholders are handled as a count of co-op claims
+            return new Target(null, null);
         }
         try {
-            int index = Integer.parseInt(parts[3]);
-            List<String> list = plugin.getConfigManager().getStringList(path);
-            if (list == null || list.isEmpty()) {
-                return "List Not Found";
-            }
-            if (index < 0 || index >= list.size()) {
-                return "Invalid Index";
-            }
-            return list.get(index);
+            ChunkKey key = new ChunkKey(m.group(2), Integer.parseInt(m.group(3)), Integer.parseInt(m.group(4)));
+            return new Target(Claim.claims.getAt(key.world(), key.x(), key.z()), key);
         } catch (NumberFormatException e) {
-            return "Invalid Index Format";
+            return new Target(null, null);
         }
     }
 
-    private ChunkValueResult getChunkValue(String params, boolean includeAllChunks, Player player) {
-        String[] parts = params.split("_");
-
-        if (parts.length <= 4) { // claim_main_value or claim_total_value
-            if (player == null) return new ChunkValueResult(0, "Player not found");
-            Chunk chunk = player.getLocation().getChunk();
-            Claim claim = Claim.getClaim(chunk);
-            if (claim == null) return new ChunkValueResult(0, "Claim not found");
-            
-            if (includeAllChunks) {
-                return new ChunkValueResult(plugin.getBlockValueManager().calculateClaimValue(claim), null);
-            } else {
-                return new ChunkValueResult(plugin.getBlockValueManager().calculateChunkValue(chunk), null);
-            }
-        }
-
-        if (parts.length < 5) {
-            return new ChunkValueResult(0, "Invalid format: Expected at least 5 parts");
-        }
-
-        ChunkAndClaim result = parseChunkAndClaim(parts[3], parts[4], parts[5]);
-        if (result.getError() != null) {
-            return new ChunkValueResult(0, result.getError());
-        }
-
-        Chunk mainChunk = result.getChunk();
-        Claim claim = result.getClaim();
-
-        if (mainChunk == null || (!includeAllChunks && claim == null)) {
-            return new ChunkValueResult(0, "Chunk not found or not claimed");
-        }
-
-        if (includeAllChunks && claim != null) {
-            return new ChunkValueResult(plugin.getBlockValueManager().calculateClaimValue(claim), null);
-        } else {
-            return new ChunkValueResult(plugin.getBlockValueManager().calculateChunkValue(mainChunk), null);
-        }
+    private String claimValue(String prefix, Claim claim, @Nullable ChunkKey key) {
+        return switch (prefix) {
+            case "claim_main_value" -> Numbers.format(plugin.getBlockValueManager().getChunkValue(claim.getChunkKey()));
+            case "claim_total_value" -> Numbers.format(claim.getClaimValue());
+            case "display_name" -> claim.getDisplayName();
+            case "expiration" -> plugin.getClaimExpirationManager().getFormattedTimeLeft(claim);
+            case "owner" -> name(claim.getOwner());
+            case "coop_count" -> String.valueOf(claim.getCoopPlayers().size());
+            case "total_size" -> String.valueOf(claim.getTotalChunkCount());
+            case "sale_status" -> saleStatus(claim);
+            default -> "";
+        };
     }
 
-    private @NotNull String handleClaimMainValue(String params, Player player) {
-        ChunkValueResult result = getChunkValue(params, false, player);
-        return result.getError() != null ? result.getError() : String.valueOf(result.getValue());
+    private String saleStatus(Claim claim) {
+        if (!plugin.getNconfig().isSellEnabled() || !claim.isForSale()) return "";
+        String price = lang("hologram.price_format").replace("{price}", EconomyService.format(claim.getSalePrice()));
+        return " " + lang("hologram.title_sale_suffix").replace("{price}", price);
     }
 
-    private @NotNull String handleClaimTotalValue(String params, Player player) {
-        ChunkValueResult result = getChunkValue(params, true, player);
-        return result.getError() != null ? result.getError() : String.valueOf(result.getValue());
-    }
+    /* ---------------- config placeholders ---------------- */
 
-    private @NotNull String handleBlockValue(String params) {
-        String materialName = params.substring("block_value_".length()).toUpperCase();
-        try {
-            Material material = Material.valueOf(materialName);
-            return String.valueOf(plugin.getBlockValueManager().getBlockValue(material));
-        } catch (IllegalArgumentException e) {
-            return "Invalid material: " + materialName;
-        }
-    }
-
-    private @Nullable String handleClaimInfo(String params, Player player) {
-        String[] parts = params.split("_");
-        
-        String prefix = parts[0];
-        if ("coop".equals(prefix) && "count".equals(parts[1])) {
-            prefix = "coop_count";
-        } else if ("total".equals(prefix) && "size".equals(parts[1])) {
-            prefix = "total_size";
-        }
-
-        if (parts.length <= 2) { // coop_count or total_size
-            if (player == null) return "Player not found";
-            Chunk chunk = player.getLocation().getChunk();
-            Claim claim = Claim.getClaim(chunk);
-            if (claim == null) return "Claim not found";
-            
-            return getClaimInfoValue(prefix, claim);
-        }
-
-        if (parts.length < 4) {
-            return "Invalid placeholder format";
-        }
-
-        int worldIndex = parts.length - 3;
-        ChunkAndClaim result = parseChunkAndClaim(parts[worldIndex], parts[worldIndex + 1], parts[worldIndex + 2]);
-        if (result.getError() != null) {
-            return result.getError();
-        }
-
-        Claim claim = result.getClaim();
-        if (claim == null) {
-            return "Claim not found";
-        }
-
-        return getClaimInfoValue(prefix, claim);
-    }
-    
-    private String getClaimInfoValue(String prefix, Claim claim) {
-        if ("expiration".equals(prefix)) {
-            return plugin.getClaimExpirationManager().getFormattedTimeLeft(claim);
-        } else if ("owner".equals(prefix)) {
-            OfflinePlayer claimOwner = Bukkit.getOfflinePlayer(claim.getOwner());
-            return claimOwner.getName() != null ? claimOwner.getName() : "Owner not found";
-        } else if ("coop_count".equals(prefix)) {
-            return String.valueOf(claim.getCoopPlayers().size());
-        } else if ("total_size".equals(prefix)) {
-            return String.valueOf(1 + claim.getLands().size());
-        } else {
-            return "Unknown placeholder prefix: " + prefix;
-        }
-    }
-
-    private ChunkAndClaim parseChunkAndClaim(String worldName, String chunkXStr, String chunkZStr) {
-        try {
-            int chunkX = Integer.parseInt(chunkXStr);
-            int chunkZ = Integer.parseInt(chunkZStr);
-
-            World world = Bukkit.getWorld(worldName);
-            if (world == null) {
-                return new ChunkAndClaim(null, null, "World not found: " + worldName);
-            }
-
-            Chunk chunk = world.getChunkAt(chunkX, chunkZ);
-            return new ChunkAndClaim(chunk, Claim.getClaim(chunk), null);
-        } catch (NumberFormatException e) {
-            return new ChunkAndClaim(null, null, "Invalid coordinates");
-        }
-    }
-
-    private @NotNull String handleClaimCount(String params, Player player) {
-        User user = getUserFromPlaceholder(params, player, "claim_count");
-        if (user == null) return "User not found";
-        int claimCount = user.getPlayerClaims().size();
-        return String.valueOf(claimCount);
-    }
-
-    private @NotNull String handleCoopCount(String params, Player player) {
-        User user = getUserFromPlaceholder(params, player, "coop_count");
-        if (user == null) return "User not found";
-        int coopCount = user.getCoopClaims().size();
-
-        return String.valueOf(coopCount);
-    }
-
-    private @Nullable User getUserFromPlaceholder(String params, Player player, String prefix) {
+    /** {@code get_<string|int|boolean|list>_<path>[_<index>]}; the path may contain underscores. */
+    private String config(String params) {
         String[] parts = params.split("_", 3);
-
-        String playerName = null;
-        if (parts.length == 2) {
-            if (player == null) return null;
-            playerName = player.getName();
-        } else if (parts.length == 3) {
-            playerName = parts[2];
-        }
-
-        if (playerName == null || playerName.isEmpty()) return null;
-        OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
-        return User.getUser(target.getUniqueId());
-    }
-
-    private @Nullable String handleCurrentChunkOwner(Player player) {
-        if (player == null) return null;
-        Chunk chunk = player.getLocation().getChunk();
-        Claim claim = Claim.getClaim(chunk);
-        if (claim == null) {
-            return NClaim.inst().getLangManager().getString("claim.no_owner");
-        }
-        OfflinePlayer owner = Bukkit.getOfflinePlayer(claim.getOwner());
-        return owner.getName() != null ? NClaim.inst().getLangManager().getString("claim.owner").replace("{owner}", owner.getName()) : NClaim.inst().getLangManager().getString("claim.no_owner");
-    }
-
-    private @Nullable String handleSaleStatus(String params, Player player) {
-        Claim claim = null;
-
-        if (params.equals("sale_status")) {
-            if (player != null) {
-                Chunk chunk = player.getLocation().getChunk();
-                claim = Claim.getClaim(chunk);
+        if (parts.length < 3) return "Invalid config placeholder";
+        String type = parts[1];
+        String path = parts[2];
+        int index = -1;
+        if (type.equals("list")) {
+            int cut = path.lastIndexOf('_');
+            if (cut < 0) return "Index required";
+            try {
+                index = Integer.parseInt(path.substring(cut + 1));
+            } catch (NumberFormatException e) {
+                return "Invalid index";
             }
-        } else {
-            String[] parts = params.split("_");
-            if (parts.length >= 4) {
-                int worldIndex = parts.length - 3;
-                ChunkAndClaim result = parseChunkAndClaim(parts[worldIndex], parts[worldIndex + 1], parts[worldIndex + 2]);
-                if (result.getError() == null) {
-                    claim = result.getClaim();
-                }
+            path = path.substring(0, cut);
+        }
+        String root = path.split("\\.", 2)[0].toLowerCase(Locale.ROOT);
+        if (HIDDEN_CONFIG.contains(root)) return "Hidden";
+
+        return switch (type) {
+            case "string" -> plugin.getConfigManager().getString(path, "Null");
+            case "int" -> String.valueOf(plugin.getConfigManager().getInt(path, 0));
+            case "boolean" -> String.valueOf(plugin.getConfigManager().getBoolean(path, false));
+            case "list" -> {
+                List<String> list = plugin.getConfigManager().getStringList(path);
+                yield index >= 0 && index < list.size() ? list.get(index) : "Invalid index";
             }
-        }
-
-        if (claim == null) {
-            return "";
-        }
-
-        if (NClaim.inst().getNconfig().isSellEnabled() && claim.isForSale()) {
-            String priceFormat = plugin.getLangManager().getString("hologram.price_format");
-            if (priceFormat.isEmpty()) priceFormat = "&e{price}";
-
-            java.text.DecimalFormat df = new java.text.DecimalFormat("#,###.##");
-            String formattedPrice = df.format(claim.getSalePrice());
-
-            String finalPriceString = priceFormat.replace("{price}", formattedPrice);
-            String suffix = plugin.getLangManager().getString("hologram.title_sale_suffix");
-
-            return " " + suffix.replace("{price}", finalPriceString);
-        }
-
-        return "";
+            default -> "Unknown type: " + type;
+        };
     }
 
-    private @Nullable String handleDisplayName(String params) {
-        String[] parts = params.split("_");
-        if (parts.length < 5) return "Invalid format";
+    /* ---------------- helpers ---------------- */
 
-        int worldIndex = parts.length - 3;
-        ChunkAndClaim result = parseChunkAndClaim(parts[worldIndex], parts[worldIndex + 1], parts[worldIndex + 2]);
-
-        if (result.getError() != null) return "Error";
-
-        Claim claim = result.getClaim();
-        return claim != null ? claim.getDisplayName() : "Unknown";
+    @Nullable
+    private static Claim here(@Nullable Player player) {
+        return player == null ? null : Claim.claims.getAt(player.getLocation());
     }
 
-    private String handlePersonalExpiry(Player player) {
-        if (player == null) return "N/A";
-        Chunk chunk = player.getLocation().getChunk();
-        Claim claim = Claim.getClaim(chunk);
-        if (claim == null) return "N/A";
-        return plugin.getClaimExpirationManager().getFormattedTimeLeft(claim);
+    private static long countOwned(UUID uuid) {
+        return Claim.claims.stream().filter(c -> c.isOwner(uuid)).count();
+    }
+
+    private static long countCoop(UUID uuid) {
+        return Claim.claims.stream().filter(c -> c.getCoopPlayers().contains(uuid)).count();
+    }
+
+    private static long totalValue(UUID uuid) {
+        return Claim.claims.stream().filter(c -> c.isOwner(uuid)).mapToLong(Claim::getClaimValue).sum();
+    }
+
+    private static int totalChunks(UUID uuid) {
+        return Claim.claims.stream().filter(c -> c.isOwner(uuid)).mapToInt(Claim::getTotalChunkCount).sum();
+    }
+
+    private static String name(UUID uuid) {
+        String name = Bukkit.getOfflinePlayer(uuid).getName();
+        return name != null ? name : "Unknown";
+    }
+
+    private String lang(String path) {
+        return plugin.getLangManager().getString(path);
     }
 }

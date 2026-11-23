@@ -8,7 +8,7 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.nandayo.dapi.message.ChannelType;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 
 public class AxSellWand implements Listener {
 
@@ -30,10 +30,10 @@ public class AxSellWand implements Listener {
         Material type = targetBlock.getType();
         if (type != Material.CHEST && type != Material.TRAPPED_CHEST) return;
 
-        Claim claim = Claim.getClaim(targetBlock.getChunk());
-        if (claim != null && !claim.getOwner().equals(player.getUniqueId())) {
+        Claim claim = Claim.claims.getAt(targetBlock);
+        if (claim != null && !plugin.getClaimCoopManager().hasPermission(player, claim, nesoi.aysihuniks.nclaim.enums.Permission.USE_CHEST)) {
             event.setCancelled(true);
-            ChannelType.CHAT.send(player, plugin.getLangManager().getString("command.permission_denied"));
+            Msg.send(player, plugin.getLangManager().getString("command.permission_denied"));
         }
     }
 }
