@@ -1,194 +1,86 @@
 package nesoi.aysihuniks.nclaim.utils;
 
-import nesoi.aysihuniks.nclaim.NClaim;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.nandayo.dapi.object.DSound;
-import org.nandayo.dapi.util.Util;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import static nesoi.aysihuniks.nclaim.NClaim.getSound;
+import java.util.List;
 
-public abstract class MessageType {
+/**
+ * Feedback sound effects. Each effect is a short sequence of notes; the first note of most
+ * effects can be changed in config.yml under {@code sounds.<key>} ({@code NONE} disables it).
+ */
+public final class MessageType {
 
-    private static DSound getCfgSound(String path, DSound def) {
-        String name = NClaim.inst().getConfigManager().getString(path, def.name());
-        try {
-            return DSound.valueOf(name);
-        } catch (IllegalArgumentException e) {
-            Util.log("&cInvalid sound name in config '" + path + "': " + name + ". Using default: " + def.name());
-            return def;
-        }
+    private record Note(@Nullable String configKey, @NotNull String sound, float volume, float pitch, long delay) {
     }
 
-    public static final MessageType CONFIRM = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound sound = getCfgSound("sounds.confirm", DSound.BLOCK_NOTE_BLOCK_CHIME);
-            NClaim.inst().getWrapper().playSound(player, getSound(sound, DSound.BLOCK_NOTE_BLOCK_PLING), 1f, 1f);
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(sound, DSound.BLOCK_NOTE_BLOCK_PLING), 1f, 2f);
-            }, 2L);
+    private static Note cfg(String key, String sound, float volume, float pitch) {
+        return new Note(key, sound, volume, pitch, 0);
+    }
+
+    private static Note fixed(String sound, float volume, float pitch, long delay) {
+        return new Note(null, sound, volume, pitch, delay);
+    }
+
+    public static final MessageType CONFIRM = new MessageType(
+            cfg("confirm", "BLOCK_NOTE_BLOCK_CHIME", 1f, 1f),
+            new Note("confirm", "BLOCK_NOTE_BLOCK_CHIME", 1f, 2f, 2));
+    public static final MessageType FAIL = new MessageType(
+            cfg("fail", "ENTITY_ENDERMAN_TELEPORT", 0.5f, 0.5f),
+            fixed("BLOCK_ANVIL_LAND", 0.3f, 0.5f, 2));
+    public static final MessageType WARN = new MessageType(
+            cfg("warn", "BLOCK_NOTE_BLOCK_BASS", 1f, 0.5f),
+            new Note("warn", "BLOCK_NOTE_BLOCK_BASS", 1f, 0.6f, 2));
+    public static final MessageType VALUE_INCREASE = new MessageType(
+            cfg("value_increase", "UI_BUTTON_CLICK", 0.4f, 1.8f),
+            fixed("BLOCK_NOTE_BLOCK_PLING", 0.3f, 1.6f, 0));
+    public static final MessageType VALUE_DECREASE = new MessageType(
+            cfg("value_decrease", "UI_BUTTON_CLICK", 0.4f, 1.4f),
+            fixed("BLOCK_NOTE_BLOCK_PLING", 0.3f, 0.8f, 0));
+    public static final MessageType MENU_REFRESH = new MessageType(
+            cfg("menu_refresh", "BLOCK_PISTON_CONTRACT", 0.3f, 1.5f),
+            fixed("BLOCK_METAL_PRESSURE_PLATE_CLICK_ON", 0.4f, 1.6f, 1),
+            fixed("BLOCK_IRON_TRAPDOOR_CLOSE", 0.3f, 2.0f, 3));
+    public static final MessageType SEARCH_OPEN = new MessageType(
+            cfg("search_open", "UI_CARTOGRAPHY_TABLE_TAKE_RESULT", 0.6f, 1.2f),
+            fixed("ITEM_BOOK_PAGE_TURN", 0.4f, 1.5f, 1),
+            fixed("BLOCK_NOTE_BLOCK_HAT", 0.3f, 1.8f, 2));
+    public static final MessageType MENU_BACK = new MessageType(
+            cfg("menu_back", "ITEM_BUNDLE_DROP_CONTENTS", 0.5f, 1.2f),
+            fixed("BLOCK_NOTE_BLOCK_HAT", 0.3f, 0.8f, 2));
+    public static final MessageType MENU_FORWARD = new MessageType(
+            cfg("menu_forward", "BLOCK_ENCHANTMENT_TABLE_USE", 0.5f, 1.5f),
+            fixed("ENTITY_EXPERIENCE_ORB_PICKUP", 0.3f, 1.8f, 2));
+    public static final MessageType MENU_SELECT = new MessageType(
+            cfg("menu_click", "UI_BUTTON_CLICK", 0.7f, 1.2f),
+            fixed("ENTITY_PLAYER_LEVELUP", 0.4f, 2.0f, 2),
+            fixed("BLOCK_NOTE_BLOCK_BELL", 0.3f, 1.8f, 3));
+    public static final MessageType MENU_DESELECT = new MessageType(
+            cfg("menu_click", "UI_BUTTON_CLICK", 0.7f, 0.8f),
+            fixed("BLOCK_WOODEN_BUTTON_CLICK_OFF", 0.4f, 0.7f, 1),
+            fixed("BLOCK_NOTE_BLOCK_HAT", 0.3f, 0.6f, 2));
+    public static final MessageType TELEPORT = new MessageType(
+            cfg("teleport", "BLOCK_ENCHANTMENT_TABLE_USE", 0.7f, 1.0f),
+            fixed("BLOCK_BEACON_AMBIENT", 0.4f, 2.0f, 0),
+            fixed("ENTITY_EXPERIENCE_ORB_PICKUP", 0.5f, 1.8f, 2),
+            fixed("BLOCK_AMETHYST_BLOCK_CHIME", 0.3f, 1.5f, 4));
+
+    private final List<Note> notes;
+
+    private MessageType(Note... notes) {
+        this.notes = List.of(notes);
+    }
+
+    public void playSound(@Nullable Player player) {
+        if (player == null) return;
+        for (Note note : notes) {
+            String sound = note.configKey() == null ? note.sound() : Sounds.Config.sound(note.configKey(), note.sound());
+            if (note.delay() <= 0) {
+                Sounds.play(player, sound, note.volume(), note.pitch());
+            } else {
+                Scheduler.entityLater(player, () -> Sounds.play(player, sound, note.volume(), note.pitch()), note.delay());
+            }
         }
-    };
-
-    public static final MessageType FAIL = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s1 = getCfgSound("sounds.fail", DSound.ENTITY_ENDERMAN_TELEPORT);
-            NClaim.inst().getWrapper().playSound(player, getSound(s1, DSound.ENTITY_GHAST_HURT), 0.5f, 0.5f);
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_ANVIL_LAND, DSound.BLOCK_ANVIL_PLACE), 0.3f, 0.5f);
-            }, 2L);
-        }
-    };
-
-    public static final MessageType WARN = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s = getCfgSound("sounds.warn", DSound.BLOCK_NOTE_BLOCK_BASS);
-            NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.BLOCK_NOTE_BLOCK_BASEDRUM), 1f, 0.5f);
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.BLOCK_NOTE_BLOCK_BASEDRUM), 1f, 0.6f);
-            }, 2L);
-        }
-    };
-
-    public static final MessageType VALUE_INCREASE = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s1 = getCfgSound("sounds.value_increase", DSound.UI_BUTTON_CLICK);
-            NClaim.inst().getWrapper().playSound(player, getSound(s1, DSound.BLOCK_STONE_BUTTON_CLICK_ON), 0.4f, 1.8f);
-            NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_NOTE_BLOCK_PLING, DSound.BLOCK_NOTE_BLOCK_BELL), 0.3f, 1.6f);
-        }
-    };
-
-    public static final MessageType VALUE_DECREASE = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s1 = getCfgSound("sounds.value_decrease", DSound.UI_BUTTON_CLICK);
-            NClaim.inst().getWrapper().playSound(player, getSound(s1, DSound.BLOCK_STONE_BUTTON_CLICK_ON), 0.4f, 1.4f);
-            NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_NOTE_BLOCK_PLING, DSound.BLOCK_NOTE_BLOCK_BELL), 0.3f, 0.8f);
-        }
-    };
-
-
-    public static final MessageType MENU_REFRESH = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s = getCfgSound("sounds.menu_refresh", DSound.BLOCK_PISTON_CONTRACT);
-            NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.BLOCK_PISTON_EXTEND), 0.3f, 1.5f);
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_METAL_PRESSURE_PLATE_CLICK_ON, DSound.BLOCK_STONE_PRESSURE_PLATE_CLICK_ON), 0.4f, 1.6f);
-            }, 1L);
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_IRON_TRAPDOOR_CLOSE, DSound.BLOCK_WOODEN_TRAPDOOR_CLOSE), 0.3f, 2.0f);
-            }, 3L);
-        }
-    };
-
-
-
-    public static final MessageType SEARCH_OPEN = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s = getCfgSound("sounds.search_open", DSound.UI_CARTOGRAPHY_TABLE_TAKE_RESULT);
-            NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.ITEM_BOOK_PUT), 0.6f, 1.2f);
-
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.ITEM_BOOK_PAGE_TURN, DSound.ITEM_BOOK_PUT), 0.4f, 1.5f);
-
-            }, 1L);
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_NOTE_BLOCK_HAT, DSound.BLOCK_NOTE_BLOCK_SNARE), 0.3f, 1.8f);
-
-            }, 2L);
-        }
-    };
-
-
-    public static final MessageType MENU_BACK = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s = getCfgSound("sounds.menu_back", DSound.ITEM_BUNDLE_DROP_CONTENTS);
-            NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.ENTITY_ITEM_PICKUP), 0.5f, 1.2f);
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_NOTE_BLOCK_HAT, DSound.BLOCK_NOTE_BLOCK_SNARE), 0.3f, 0.8f);
-
-            }, 2L);
-        }
-    };
-
-    public static final MessageType MENU_FORWARD = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s = getCfgSound("sounds.menu_forward", DSound.BLOCK_ENCHANTMENT_TABLE_USE);
-            NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.BLOCK_BEACON_ACTIVATE), 0.5f, 1.5f);
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.ENTITY_EXPERIENCE_ORB_PICKUP, DSound.ENTITY_PLAYER_LEVELUP), 0.3f, 1.8f);
-
-            }, 2L);
-        }
-    };
-
-    public static final MessageType MENU_SELECT = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s = getCfgSound("sounds.menu_click", DSound.UI_BUTTON_CLICK);
-            NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.BLOCK_STONE_BUTTON_CLICK_ON), 0.7f, 1.2f);
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.ENTITY_PLAYER_LEVELUP, DSound.ENTITY_EXPERIENCE_ORB_PICKUP), 0.4f, 2.0f);
-
-            }, 2L);
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_NOTE_BLOCK_BELL, DSound.BLOCK_NOTE_BLOCK_CHIME), 0.3f, 1.8f);
-
-            }, 3L);
-        }
-    };
-
-    public static final MessageType MENU_DESELECT = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s = getCfgSound("sounds.menu_click", DSound.UI_BUTTON_CLICK);
-            NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.BLOCK_STONE_BUTTON_CLICK_ON), 0.7f, 0.8f);
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_WOODEN_BUTTON_CLICK_OFF, DSound.BLOCK_STONE_BUTTON_CLICK_OFF), 0.4f, 0.7f);
-
-            }, 1L);
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_NOTE_BLOCK_HAT, DSound.BLOCK_NOTE_BLOCK_SNARE), 0.3f, 0.6f);
-
-            }, 2L);
-        }
-    };
-
-    public static final MessageType TELEPORT = new MessageType() {
-        @Override
-        public void playSound(Player player) {
-            DSound s = getCfgSound("sounds.teleport", DSound.BLOCK_ENCHANTMENT_TABLE_USE);
-            NClaim.inst().getWrapper().playSound(player, getSound(s, DSound.BLOCK_BEACON_ACTIVATE), 0.7f, 1.0f);
-            NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_BEACON_AMBIENT, DSound.BLOCK_BEACON_ACTIVATE), 0.4f, 2.0f);
-
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.ENTITY_EXPERIENCE_ORB_PICKUP, DSound.ENTITY_PLAYER_LEVELUP), 0.5f, 1.8f);
-
-            }, 2L);
-
-            Bukkit.getScheduler().runTaskLater(NClaim.inst(), task -> {
-                NClaim.inst().getWrapper().playSound(player, getSound(DSound.BLOCK_AMETHYST_BLOCK_CHIME, DSound.BLOCK_NOTE_BLOCK_CHIME), 0.3f, 1.5f);
-
-            }, 4L);
-        }
-    };
-
-    public abstract void playSound(Player player);
+    }
 }

@@ -1,209 +1,172 @@
 package nesoi.aysihuniks.nclaim.utils;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import de.tr7zw.changeme.nbtapi.NBT;
-import de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT;
-import lombok.Getter;
-import nesoi.aysihuniks.nclaim.NClaim;
-import nesoi.aysihuniks.nclaim.enums.HeadProvider;
+import com.destroystokyo.paper.profile.PlayerProfile;
+import com.destroystokyo.paper.profile.ProfileProperty;
 import nesoi.aysihuniks.nclaim.model.User;
-import net.skinsrestorer.api.PropertyUtils;
-import net.skinsrestorer.api.SkinsRestorer;
-import net.skinsrestorer.api.property.SkinProperty;
-import net.skinsrestorer.api.storage.PlayerStorage;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.SkullMeta;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.nandayo.dapi.util.Util;
 
-import java.io.InputStreamReader;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
-@Getter
+/**
+ * Player and texture heads via Paper's profile API. Skins come from SkinsRestorer if installed,
+ * otherwise from Paper's profile cache / Mojang.
+ */
 public class HeadManager {
-    private final HeadProvider headProvider;
-    private final int version;
-    private final SkinsRestorer skinsRestorer;
-    private final boolean skinRestorerHooked;
-    private final Map<UUID, String> skinTextureCache;
-    private final Map<UUID, ItemStack> headCache;
-    private final Map<UUID, Long> textureFetchCooldown;
-    private static final long COOLDOWN_MS = 3600 * 1000;
+
+    private static final long REFETCH_MS = 60 * 60 * 1000L;
+
+    private final boolean skinsRestorer;
+    private final Map<UUID, ItemStack> headCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lastFetch = new ConcurrentHashMap<>();
 
     public HeadManager() {
-        version = NClaim.inst().getWrapper().getVersion();
-        skinsRestorer = getSkinsRestorerInstance();
-        skinRestorerHooked = skinsRestorer != null;
-        headProvider = skinRestorerHooked ? HeadProvider.SKINRESTORER : HeadProvider.NBTAPI;
-        skinTextureCache = new HashMap<>();
-        headCache = new HashMap<>();
-        textureFetchCooldown = new HashMap<>();
-        Util.log("&aHeadManager enabled successfully! Using " + headProvider.name() + " for heads.");
+        this.skinsRestorer = Bukkit.getPluginManager().isPluginEnabled("SkinsRestorer");
+        Msg.log("&aHead textures provided by " + (skinsRestorer ? "SkinsRestorer" : "Paper profiles") + ".");
     }
 
-    private SkinsRestorer getSkinsRestorerInstance() {
-        try {
-            return (SkinsRestorer) Bukkit.getPluginManager().getPlugin("SkinsRestorer");
-        } catch (Exception e) {
-            return null;
+    public boolean isSkinRestorerHooked() {
+        return skinsRestorer;
+    }
+
+    /* ---------------- heads ---------------- */
+
+    /** Head for a player. Returns a cached or plain head immediately and fetches the skin in the background. */
+    public ItemStack createHead(@NotNull OfflinePlayer player) {
+        UUID uuid = player.getUniqueId();
+        ItemStack cached = headCache.get(uuid);
+        if (cached != null) return cached.clone();
+
+        String stored = storedTexture(uuid);
+        if (stored != null) {
+            ItemStack head = createHeadWithTexture(stored);
+            headCache.put(uuid, head);
+            return head.clone();
         }
+        fetchTexture(uuid);
+        return new ItemStack(Material.PLAYER_HEAD);
+    }
+
+    public ItemStack createHeadFromCache(@NotNull UUID uuid) {
+        return createHead(Bukkit.getOfflinePlayer(uuid));
+    }
+
+    public void preloadTexturesAsync(@NotNull Collection<UUID> uuids) {
+        for (UUID uuid : uuids) {
+            if (!headCache.containsKey(uuid)) fetchTexture(uuid);
+        }
+    }
+
+    /**
+     * Head with a texture. Accepts the base64 "textures" value, a textures.minecraft.net URL
+     * or just the texture id.
+     */
+    public ItemStack createHeadWithTexture(@Nullable String texture) {
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        if (texture == null || texture.isBlank()) return head;
+        try {
+            PlayerProfile profile = Bukkit.createProfile(UUID.nameUUIDFromBytes(texture.getBytes(StandardCharsets.UTF_8)), null);
+            profile.setProperty(new ProfileProperty("textures", toBase64(texture.trim())));
+            SkullMeta meta = (SkullMeta) head.getItemMeta();
+            meta.setPlayerProfile(profile);
+            head.setItemMeta(meta);
+        } catch (Exception e) {
+            Msg.log("&cCould not create head texture: " + e.getMessage());
+        }
+        return head;
+    }
+
+    private static String toBase64(String texture) {
+        if (texture.startsWith("ey")) return texture; // already base64 JSON
+        String url = texture.startsWith("http") ? texture : "https://textures.minecraft.net/texture/" + texture;
+        String json = "{\"textures\":{\"SKIN\":{\"url\":\"" + url + "\"}}}";
+        return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /* ---------------- textures ---------------- */
+
+    @Nullable
+    private String storedTexture(UUID uuid) {
+        User user = User.getUser(uuid);
+        return user != null ? user.getSkinTexture() : null;
+    }
+
+    /** Cached texture value; fetches in the background when missing. */
+    @Nullable
+    public String getSkinTextureValue(@NotNull UUID uuid, boolean forceFetch) {
+        String stored = storedTexture(uuid);
+        if (stored != null && !forceFetch) return stored;
+        fetchTexture(uuid);
+        return stored;
+    }
+
+    private void fetchTexture(UUID uuid) {
+        long now = System.currentTimeMillis();
+        Long last = lastFetch.get(uuid);
+        if (last != null && now - last < REFETCH_MS) return;
+        lastFetch.put(uuid, now);
+
+        resolveTexture(uuid).thenAccept(texture -> {
+            if (texture == null) return;
+            headCache.put(uuid, createHeadWithTexture(texture));
+            User user = User.getUser(uuid);
+            if (user != null && !texture.equals(user.getSkinTexture())) user.setSkinTexture(texture);
+        }).exceptionally(t -> null);
+    }
+
+    private CompletableFuture<String> resolveTexture(UUID uuid) {
+        Player online = Bukkit.getPlayer(uuid);
+        if (skinsRestorer) {
+            String name = online != null ? online.getName() : Bukkit.getOfflinePlayer(uuid).getName();
+            CompletableFuture<String> sr = CompletableFuture.supplyAsync(() -> SkinsRestorerHook.texture(uuid, name));
+            return sr.thenCompose(t -> t != null ? CompletableFuture.completedFuture(t) : profileTexture(uuid, online));
+        }
+        return profileTexture(uuid, online);
+    }
+
+    private static CompletableFuture<String> profileTexture(UUID uuid, @Nullable Player online) {
+        if (online != null) {
+            String t = texturesOf(online.getPlayerProfile());
+            if (t != null) return CompletableFuture.completedFuture(t);
+        }
+        PlayerProfile profile = Bukkit.createProfile(uuid);
+        return profile.update().thenApply(HeadManager::texturesOf);
     }
 
     @Nullable
-    public String getSkinTextureValue(@NotNull UUID uuid, boolean forceFetch) {
-        Long lastFetched = textureFetchCooldown.get(uuid);
-        if (!forceFetch && lastFetched != null && System.currentTimeMillis() - lastFetched < COOLDOWN_MS) {
-            User user = User.getUser(uuid);
-            if (user != null && user.getSkinTexture() != null) {
-                return user.getSkinTexture();
-            }
-            return skinTextureCache.get(uuid);
+    private static String texturesOf(@Nullable PlayerProfile profile) {
+        if (profile == null) return null;
+        for (ProfileProperty property : profile.getProperties()) {
+            if (property.getName().equals("textures")) return property.getValue();
         }
+        return null;
+    }
 
-        User user = User.getUser(uuid);
-        if (user != null && user.getSkinTexture() != null) {
-            return user.getSkinTexture();
-        }
-
-        String cachedTexture = skinTextureCache.get(uuid);
-        if (cachedTexture != null || skinTextureCache.containsKey(uuid)) {
-            return cachedTexture;
-        }
-
-        String texture = null;
-        if (skinRestorerHooked) {
-            OfflinePlayer offPlayer = Bukkit.getOfflinePlayer(uuid);
-            PlayerStorage storage = skinsRestorer.getPlayerStorage();
+    /** Isolated so SkinsRestorer classes are only loaded when the plugin is present. */
+    private static final class SkinsRestorerHook {
+        @Nullable
+        static String texture(UUID uuid, @Nullable String name) {
             try {
-                Optional<SkinProperty> property = storage.getSkinForPlayer(uuid, offPlayer.getName());
-                if (property.isPresent()) {
-                    String textureURL = PropertyUtils.getSkinTextureUrl(property.get());
-                    String json = "{\"textures\":{\"SKIN\":{\"url\":\"" + textureURL + "\"}}}";
-                    texture = Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
-                }
-            } catch (Exception ignored) {}
-        } else {
-            try {
-                URL url_0 = new URL("https://api.mojang.com/users/profiles/minecraft/" + Bukkit.getOfflinePlayer(uuid).getName());
-                InputStreamReader reader_0 = new InputStreamReader(url_0.openStream());
-                String id = JsonParser.parseReader(reader_0).getAsJsonObject().get("id").getAsString();
-
-                URL url_1 = new URL("https://sessionserver.mojang.com/session/minecraft/profile/" + id + "?unsigned=false");
-                InputStreamReader reader_1 = new InputStreamReader(url_1.openStream());
-                JsonObject textureProperty = JsonParser.parseReader(reader_1).getAsJsonObject().get("properties").getAsJsonArray().get(0).getAsJsonObject();
-                texture = textureProperty.get("value").getAsString();
-            } catch (Exception ignored) {}
-        }
-
-        textureFetchCooldown.put(uuid, System.currentTimeMillis());
-        skinTextureCache.put(uuid, texture);
-        if (user != null && texture != null) {
-            user.setSkinTexture(texture);
-            User.saveUser(uuid);
-        }
-
-        return texture;
-    }
-
-    public ItemStack createHead(OfflinePlayer player) {
-        UUID uuid = player.getUniqueId();
-
-        ItemStack cachedHead = headCache.get(uuid);
-        if (cachedHead != null) {
-            return cachedHead.clone();
-        }
-
-        ItemStack defaultHead = new ItemStack(Material.PLAYER_HEAD);
-
-        Bukkit.getScheduler().runTaskAsynchronously(NClaim.inst(), () -> {
-            String texture = getSkinTextureValue(uuid, false);
-            if (texture != null) {
-                ItemStack head = createHeadWithTexture(texture);
-                headCache.put(uuid, head);
-            }
-        });
-
-        return defaultHead;
-    }
-
-    public ItemStack createHeadFromCache(UUID uuid) {
-        ItemStack cachedHead = headCache.get(uuid);
-        if (cachedHead != null) {
-            return cachedHead.clone();
-        }
-
-        String texture = skinTextureCache.get(uuid);
-        if (texture == null) {
-
-            User user = User.getUser(uuid);
-            if (user == null) {
-                User.loadUser(uuid);
-                user = User.getUser(uuid);
-            }
-
-            if (user != null && user.getSkinTexture() != null) {
-                texture = user.getSkinTexture();
-                skinTextureCache.put(uuid, texture);
+                net.skinsrestorer.api.SkinsRestorer api = net.skinsrestorer.api.SkinsRestorerProvider.get();
+                Optional<net.skinsrestorer.api.property.SkinProperty> property =
+                        api.getPlayerStorage().getSkinForPlayer(uuid, name);
+                return property.map(net.skinsrestorer.api.property.SkinProperty::getValue).orElse(null);
+            } catch (Throwable t) {
+                return null;
             }
         }
-
-        if (texture != null) {
-            ItemStack head = createHeadWithTexture(texture);
-            headCache.put(uuid, head);
-            return head;
-        }
-
-        ItemStack defaultHead = new ItemStack(Material.PLAYER_HEAD);
-        headCache.put(uuid, defaultHead);
-        return defaultHead;
-    }
-
-    public ItemStack createHeadWithTexture(final String texture) {
-        try {
-            ItemStack head = new ItemStack(Material.PLAYER_HEAD);
-            if (version > 2004) {
-                NBT.modifyComponents(head, nbt -> {
-                    ReadWriteNBT profileNbt = nbt.getOrCreateCompound("minecraft:profile");
-                    profileNbt.setUUID("id", UUID.randomUUID());
-                    ReadWriteNBT propertiesNbt = profileNbt.getCompoundList("properties").addCompound();
-                    propertiesNbt.setString("name", "textures");
-                    propertiesNbt.setString("value", texture);
-                });
-            } else {
-                NBT.modify(head, nbt -> {
-                    ReadWriteNBT skullOwnerCompound = nbt.getOrCreateCompound("SkullOwner");
-                    skullOwnerCompound.setUUID("Id", UUID.randomUUID());
-                    skullOwnerCompound.getOrCreateCompound("Properties")
-                            .getCompoundList("textures")
-                            .addCompound()
-                            .setString("Value", texture);
-                });
-            }
-            return head;
-        } catch (Exception e) {
-            Util.log("HeadManager error creating head with NBTAPI: " + e.getMessage());
-            return new ItemStack(Material.PLAYER_HEAD);
-        }
-    }
-
-    public void preloadTexturesAsync(Collection<UUID> uuids) {
-        Bukkit.getScheduler().runTaskAsynchronously(NClaim.inst(), () -> {
-            for (UUID uuid : uuids) {
-                String texture = getSkinTextureValue(uuid, false);
-                if (texture != null) {
-                    ItemStack head = createHeadWithTexture(texture);
-                    headCache.put(uuid, head);
-                } else {
-                    ItemStack defaultHead = new ItemStack(Material.PLAYER_HEAD);
-                    headCache.put(uuid, defaultHead);
-                }
-            }
-        });
     }
 }
