@@ -1,444 +1,460 @@
 package nesoi.aysihuniks.nclaim.model;
 
-import de.oliver.fancyholograms.api.FancyHologramsPlugin;
-import de.oliver.fancyholograms.api.HologramManager;
-import eu.decentsoftware.holograms.api.DHAPI;
-import eu.decentsoftware.holograms.api.holograms.Hologram;
-import lombok.Getter;
-import lombok.Setter;
 import nesoi.aysihuniks.nclaim.NClaim;
-import nesoi.aysihuniks.nclaim.api.events.ClaimRemoveEvent;
-import nesoi.aysihuniks.nclaim.enums.HoloEnum;
 import nesoi.aysihuniks.nclaim.enums.RemoveCause;
-import nesoi.aysihuniks.nclaim.service.ClaimSettingsManager;
-import org.bukkit.*;
-import org.bukkit.block.Block;
-import org.bukkit.block.data.BlockData;
+import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.nandayo.dapi.message.ChannelType;
-import org.nandayo.dapi.object.DParticle;
 
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
 
-@Getter
-@Setter
+/**
+ * A claimed area: one main chunk (holding the claim block) plus optional extra chunks ("lands").
+ * <p>
+ * The claim only stores the world name and chunk coordinates, so nothing here forces a chunk to
+ * load. All mutable state is safe to read from other threads (Folia regions, async saving).
+ */
 public class Claim {
 
-    private NClaim plugin;
+    /** Every loaded claim, indexed by chunk. */
+    public static final ClaimRegistry claims = new ClaimRegistry();
 
-    public Claim(
-            @NotNull String claimId,
-            @Nullable String displayName,
-            @Nullable String slug,
-            @NotNull Chunk chunk,
-            @NotNull Date createdAt,
-            @NotNull Date expiredAt,
-            @NotNull UUID owner,
-            @NotNull Location claimBlockLocation,
-            long claimValue,
-            Material claimBlockType,
-            Collection<String> lands,
-            Collection<UUID> coopPlayers,
-            HashMap<UUID, Date> coopPlayerJoinDate,
-            HashMap<UUID, CoopPermission> coopPermissions,
-            ClaimSetting settings,
-            Set<Material> purchasedBlockTypes,
-            boolean forSale,
-            double salePrice
-    ) {
-        this.plugin = NClaim.inst();
+    private final String claimId;
+    private final String worldName;
+    private final int chunkX;
+    private final int chunkZ;
+    private final Date createdAt;
+
+    private volatile String displayName;
+    private volatile String slug;
+    private volatile Date expiredAt;
+    private volatile UUID owner;
+    private volatile Location claimBlockLocation;
+    private volatile long claimValue;
+    private volatile Material claimBlockType;
+    private volatile boolean forSale;
+    private volatile double salePrice;
+
+    private final LandSet lands;
+    private final List<UUID> coopPlayers = new CopyOnWriteArrayList<>();
+    private final Map<UUID, Date> coopPlayerJoinDate = new ConcurrentHashMap<>();
+    private final Map<UUID, CoopPermission> coopPermissions = new ConcurrentHashMap<>();
+    private final ClaimSetting settings;
+    private final Set<Material> purchasedBlockTypes = new CopyOnWriteArraySet<>();
+    /** Blocks an admin offered to this claim only, with their price; moved to purchasedBlockTypes once bought. */
+    private final Map<Material, Double> blockOffers = new ConcurrentHashMap<>();
+
+    private volatile boolean removed;
+
+    public Claim(@NotNull String claimId,
+                 @Nullable String displayName,
+                 @Nullable String slug,
+                 @NotNull String worldName,
+                 int chunkX,
+                 int chunkZ,
+                 @NotNull Date createdAt,
+                 @NotNull Date expiredAt,
+                 @NotNull UUID owner,
+                 @NotNull Location claimBlockLocation,
+                 long claimValue,
+                 @Nullable Material claimBlockType,
+                 @Nullable Collection<String> lands,
+                 @Nullable Collection<UUID> coopPlayers,
+                 @Nullable Map<UUID, Date> coopPlayerJoinDate,
+                 @Nullable Map<UUID, CoopPermission> coopPermissions,
+                 @Nullable ClaimSetting settings,
+                 @Nullable Set<Material> purchasedBlockTypes,
+                 boolean forSale,
+                 double salePrice) {
         this.claimId = claimId;
-        this.displayName = displayName;
-        this.slug = (slug == null || slug.isEmpty()) ? toSlug(getDisplayName()) : toSlug(slug);
-        this.chunk = chunk;
+        this.worldName = worldName;
+        this.chunkX = chunkX;
+        this.chunkZ = chunkZ;
         this.createdAt = createdAt;
+        this.displayName = displayName == null || displayName.isBlank() ? null : displayName;
+        this.slug = slug == null || slug.isEmpty() ? toSlug(getDisplayName()) : toSlug(slug);
         this.expiredAt = expiredAt;
         this.owner = owner;
-        this.claimBlockLocation = claimBlockLocation;
-        this.claimBlockType = claimBlockType;
+        this.claimBlockLocation = claimBlockLocation.clone();
         this.claimValue = claimValue;
-        this.lands = lands;
-        this.coopPlayers = coopPlayers;
-        this.coopPlayerJoinDate = coopPlayerJoinDate;
-        this.coopPermissions = coopPermissions;
-        this.settings = settings;
-        if (purchasedBlockTypes != null) {
-            this.purchasedBlockTypes.addAll(purchasedBlockTypes);
-        }
+        this.claimBlockType = claimBlockType == null ? Material.OBSIDIAN : claimBlockType;
+        this.lands = new LandSet(this, lands);
+        this.settings = settings == null ? new ClaimSetting() : settings;
         this.forSale = forSale;
         this.salePrice = salePrice;
-
-        claims.removeIf(c -> c.getClaimId().equals(claimId));
-        claims.add(this);
-    }
-
-    private final @NotNull String claimId;
-    private @Nullable String displayName;
-    private @NotNull String slug;
-    private final @NotNull Chunk chunk;
-    private final @NotNull Date createdAt;
-    private @NotNull Date expiredAt;
-    private @NotNull UUID owner;
-    private @NotNull Location claimBlockLocation;
-    private long claimValue;
-    private Material claimBlockType;
-    private final Collection<String> lands;
-    private final Collection<UUID> coopPlayers;
-    private final HashMap<UUID, Date> coopPlayerJoinDate;
-
-    private final HashMap<UUID, CoopPermission> coopPermissions;
-    private final ClaimSetting settings;
-    private final Set<Material> purchasedBlockTypes = new HashSet<>();
-
-    private boolean forSale;
-    private double salePrice;
-
-    public Collection<Chunk> getAllChunks() {
-        List<Chunk> chunks = new ArrayList<>();
-        chunks.add(chunk);
-        getLands().forEach(l -> chunks.add(NClaim.deserializeChunk(l)));
-        return chunks;
-    }
-
-    @Getter
-    static public Collection<Claim> claims = new ArrayList<>();
-
-    static public Claim getClaim(@NotNull Chunk chunk) {
-        return claims.stream()
-                .filter(c -> c.getChunk().equals(chunk) || c.getLands().contains(chunk.getWorld().getName() +  "," + chunk.getX() + "," + chunk.getZ()))
-                .findFirst().orElse(null);
-    }
-
-    private volatile boolean isBeingRemoved = false;
-
-    public void remove(RemoveCause cause) {
-        if (isBeingRemoved) {
-            return;
-        }
-
-        isBeingRemoved = true;
-
-        ClaimRemoveEvent removeEvent = new ClaimRemoveEvent(this, cause);
-        Bukkit.getPluginManager().callEvent(removeEvent);
-
-        if (removeEvent.isCancelled()) {
-            Player owner = Bukkit.getPlayer(getOwner());
-            if (owner != null) {
-                ChannelType.CHAT.send(owner, plugin.getLangManager().getString("claim.remove_cancelled"));
-            }
-            return;
-        }
-
-        World world = getChunk().getWorld();
-        Location claimBlock = getClaimBlockLocation();
-
-        claimBlock.getBlock().setType(Material.AIR);
-
-        String hologramId = "claim_" + world.getName() + "_" + getChunk().getX() + "_" + getChunk().getZ();
-
-        if (NClaim.inst().getHologramManager() != null) {
-            if (HoloEnum.getActiveHologram() == HoloEnum.DECENT_HOLOGRAM) {
-                Hologram hologram = DHAPI.getHologram(hologramId);
-                if (hologram != null) {
-                    hologram.delete();
-                }
-            } else {
-                HologramManager manager = FancyHologramsPlugin.get().getHologramManager();
-                manager.getHologram(hologramId).ifPresent(manager::removeHologram);
+        if (coopPlayers != null) {
+            for (UUID uuid : coopPlayers) {
+                if (uuid == null || uuid.equals(owner) || this.coopPlayers.contains(uuid)) continue;
+                this.coopPlayers.add(uuid);
+                Date joined = coopPlayerJoinDate == null ? null : coopPlayerJoinDate.get(uuid);
+                this.coopPlayerJoinDate.put(uuid, joined == null ? new Date() : joined);
+                CoopPermission perm = coopPermissions == null ? null : coopPermissions.get(uuid);
+                this.coopPermissions.put(uuid, perm == null ? new CoopPermission() : perm);
             }
         }
-
-        int centerX = getChunk().getX() * 16 + 8;
-        int centerZ = getChunk().getZ() * 16 + 8;
-
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.getWorld().equals(claimBlock.getWorld())) {
-                double distance = player.getLocation().distance(claimBlock);
-                float volume = (float) Math.max(0.2, 1 - (distance / 16.0));
-                world.playSound(claimBlock, Sound.ENTITY_GENERIC_EXPLODE, volume, 1);
-
-                ChannelType.CHAT.send(player, plugin.getLangManager().getString("claim.expired")
-                        .replace("{x}", String.valueOf(centerX))
-                        .replace("{z}", String.valueOf(centerZ)));
-            }
-        }
-
-        User ownerUser = User.getUser(getOwner());
-        if (ownerUser == null) {
-            User.loadUser(getOwner());
-            ownerUser = User.getUser(getOwner());
-        }
-        if (ownerUser != null) {
-            ownerUser.getPlayerClaims().remove(this);
-            User.saveUser(getOwner());
-        }
-
-        getCoopPlayers().forEach(uuid -> {
-            User coopUser = User.getUser(uuid);
-            if (coopUser == null) {
-                User.loadUser(uuid);
-                coopUser = User.getUser(uuid);
-            }
-            if (coopUser != null) {
-                coopUser.getCoopClaims().remove(this);
-                User.saveUser(uuid);
-            }
-        });
-
-        world.spawnParticle(NClaim.getParticle(DParticle.LARGE_SMOKE, DParticle.SMOKE_LARGE), claimBlock, 1);
-        world.playSound(claimBlock, Sound.ENTITY_GENERIC_EXPLODE, 1, 1);
-
-        if (plugin.getNconfig().isDatabaseEnabled()) {
-            plugin.getDatabaseManager().deleteClaim(getClaimId());
-        }
-
-        claims.remove(this);
-
-        if (NClaim.inst().getNconfig().isWebhookEnabled()
-                && NClaim.inst().getNconfig().getWebhookUrl() != null
-                && !NClaim.inst().getNconfig().getWebhookUrl().isEmpty()) {
-            try {
-                String ownerName = Bukkit.getOfflinePlayer(getOwner()).getName();
-                String worldName = getChunk().getWorld().getName();
-                int x = getChunk().getX() * 16 + 8;
-                int y = getClaimBlockLocation().getBlockY();
-                int z = getChunk().getZ() * 16 + 8;
-
-                String payload;
-                if (NClaim.inst().getNconfig().isWebhookUseEmbed()) {
-                    String description = getString(ownerName);
-
-                    StringBuilder json = new StringBuilder();
-                    json.append("{");
-
-                    if (NClaim.inst().getNconfig().getWebhookMention() != null && !NClaim.inst().getNconfig().getWebhookMention().isEmpty()) {
-                        json.append("\"content\":\"").append(NClaim.inst().getNconfig().getWebhookMention()).append("\",");
-                    }
-
-                    json.append("\"embeds\":[{");
-                    if (!NClaim.inst().getNconfig().getWebhookEmbedTitle().isEmpty()) {
-                        json.append("\"title\":\"").append(escapeJson(NClaim.inst().getNconfig().getWebhookEmbedTitle())).append("\",");
-                    }
-                    json.append("\"description\":\"").append(escapeJson(description)).append("\",");
-                    json.append("\"color\":").append(Integer.parseInt(NClaim.inst().getNconfig().getWebhookEmbedColor().replace("#", ""), 16)).append(",");
-                    if (!NClaim.inst().getNconfig().getWebhookEmbedFooter().isEmpty()) {
-                        json.append("\"footer\":{\"text\":\"").append(escapeJson(NClaim.inst().getNconfig().getWebhookEmbedFooter())).append("\"},");
-                    }
-                    if (NClaim.inst().getNconfig().isWebhookEmbedTimestamp()) {
-                        json.append("\"timestamp\":\"").append(java.time.Instant.now().toString()).append("\",");
-                    }
-                    if (!NClaim.inst().getNconfig().getWebhookEmbedImage().isEmpty()) {
-                        json.append("\"image\":{\"url\":\"").append(escapeJson(NClaim.inst().getNconfig().getWebhookEmbedImage())).append("\"},");
-                    }
-                    if (!NClaim.inst().getNconfig().getWebhookEmbedThumbnail().isEmpty()) {
-                        json.append("\"thumbnail\":{\"url\":\"").append(escapeJson(NClaim.inst().getNconfig().getWebhookEmbedThumbnail())).append("\"},");
-                    }
-                    if (json.charAt(json.length() - 1) == ',') {
-                        json.deleteCharAt(json.length() - 1);
-                    }
-                    json.append("}]}");
-                    payload = json.toString();
-                } else {
-                    String content = NClaim.inst().getNconfig().getWebhookContent()
-                            .replace("%player%", ownerName != null ? ownerName : "Unknown")
-                            .replace("%world%", worldName)
-                            .replace("%x%", String.valueOf(x))
-                            .replace("%y%", String.valueOf(y))
-                            .replace("%z%", String.valueOf(z));
-                    StringBuilder json = new StringBuilder();
-                    json.append("{");
-                    if (NClaim.inst().getNconfig().getWebhookMention() != null && !NClaim.inst().getNconfig().getWebhookMention().isEmpty()) {
-                        json.append("\"content\":\"").append(NClaim.inst().getNconfig().getWebhookMention()).append(" ");
-                    } else {
-                        json.append("\"content\":\"");
-                    }
-                    json.append(escapeJson(content)).append("\"}");
-                    payload = json.toString();
-                }
-
-                URL url = new URL(NClaim.inst().getNconfig().getWebhookUrl());
-                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("POST");
-                connection.setRequestProperty("Content-Type", "application/json");
-                connection.setDoOutput(true);
-                byte[] out = payload.getBytes(StandardCharsets.UTF_8);
-                connection.getOutputStream().write(out);
-
-                int responseCode = connection.getResponseCode();
-                connection.disconnect();
-            } catch (Exception e) {
-                plugin.getLogger().warning("Failed to send Discord webhook: " + e.getMessage());
-            }
-        }
+        if (purchasedBlockTypes != null) this.purchasedBlockTypes.addAll(purchasedBlockTypes);
+        this.purchasedBlockTypes.add(this.claimBlockType);
     }
 
-    private @NotNull String getString(String ownerName) {
-        String worldName = getChunk().getWorld().getName();
-        int x = getChunk().getX() * 16 + 8;
-        int y = getClaimBlockLocation().getBlockY();
-        int z = getChunk().getZ() * 16 + 8;
+    /* ---------------- identity / location ---------------- */
 
-        return NClaim.inst().getNconfig().getWebhookEmbedDescription()
-                .replace("%player%", ownerName != null ? ownerName : "Unknown")
-                .replace("%world%", worldName)
-                .replace("%x%", String.valueOf(x))
-                .replace("%y%", String.valueOf(y))
-                .replace("%z%", String.valueOf(z));
+    public @NotNull String getClaimId() {
+        return claimId;
     }
 
-    private String escapeJson(String s) {
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+    public @NotNull String getWorldName() {
+        return worldName;
     }
 
+    public @Nullable World getWorld() {
+        return Bukkit.getWorld(worldName);
+    }
+
+    public int getChunkX() {
+        return chunkX;
+    }
+
+    public int getChunkZ() {
+        return chunkZ;
+    }
+
+    public @NotNull ChunkKey getChunkKey() {
+        return new ChunkKey(worldName, chunkX, chunkZ);
+    }
+
+    /**
+     * The main chunk. <b>Loads the chunk</b> and must be called on the thread owning it;
+     * prefer {@link #getChunkX()}, {@link #getChunkZ()} and {@link #getWorldName()}.
+     */
+    public @NotNull Chunk getChunk() {
+        World world = getWorld();
+        if (world == null) throw new IllegalStateException("World " + worldName + " is not loaded");
+        return world.getChunkAt(chunkX, chunkZ);
+    }
+
+    public boolean isMainChunk(@NotNull String world, int x, int z) {
+        return chunkX == x && chunkZ == z && worldName.equals(world);
+    }
+
+    /** All chunks of the claim (main chunk first) as keys; never loads anything. */
+    public @NotNull List<ChunkKey> getAllChunkKeys() {
+        List<ChunkKey> keys = new ArrayList<>(lands.size() + 1);
+        keys.add(getChunkKey());
+        for (String land : lands) {
+            ChunkKey key = ChunkKey.parse(land);
+            if (key != null) keys.add(key);
+        }
+        return keys;
+    }
+
+    public int getTotalChunkCount() {
+        return 1 + lands.size();
+    }
+
+    /** Block coordinates of the main chunk centre, as shown to players. */
+    public int getCenterX() {
+        return (chunkX << 4) + 8;
+    }
+
+    public int getCenterZ() {
+        return (chunkZ << 4) + 8;
+    }
+
+    /* ---------------- data ---------------- */
+
+    public @NotNull String getDisplayName() {
+        return displayName != null ? displayName : claimId;
+    }
+
+    public @Nullable String getRawDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(@Nullable String displayName) {
+        this.displayName = displayName == null || displayName.isBlank() ? null : displayName;
+        markDirty();
+    }
+
+    public @NotNull String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(@NotNull String slug) {
+        this.slug = slug;
+        markDirty();
+    }
+
+    public @NotNull Date getCreatedAt() {
+        return createdAt;
+    }
+
+    public @NotNull Date getExpiredAt() {
+        return expiredAt;
+    }
+
+    public void setExpiredAt(@NotNull Date expiredAt) {
+        this.expiredAt = expiredAt;
+        markDirty();
+    }
+
+    public boolean isExpired() {
+        return expiredAt.getTime() <= System.currentTimeMillis();
+    }
+
+    public @NotNull UUID getOwner() {
+        return owner;
+    }
+
+    /** Changes the owner. The new owner is removed from the co-op list. */
     public void setOwner(@NotNull UUID newOwner) {
-        UUID oldOwner = getOwner();
-        User oldOwnerUser = User.getUser(oldOwner);
-        if (oldOwnerUser == null) {
-            User.loadUser(oldOwner);
-            oldOwnerUser = User.getUser(oldOwner);
-        }
-
-        if (oldOwnerUser != null) {
-            oldOwnerUser.getPlayerClaims().remove(this);
-            User.saveUser(oldOwner);
-        }
-
-        owner = newOwner;
-
-        User newOwnerUser = User.getUser(newOwner);
-        if (newOwnerUser == null) {
-            User.loadUser(newOwner);
-            newOwnerUser = User.getUser(newOwner);
-        }
-
-        if (newOwnerUser != null) {
-            newOwnerUser.getPlayerClaims().add(this);
-            User.saveUser(newOwner);
-        }
-
-        getCoopPlayers().remove(newOwner);
-
-        if (plugin.getNconfig().isDatabaseEnabled()) {
-            plugin.getDatabaseManager().saveClaim(this);
-        }
+        this.owner = newOwner;
+        removeCoop(newOwner);
+        markDirty();
     }
 
-    public boolean isOwner(UUID uuid) {
-        return getOwner().equals(uuid);
+    public boolean isOwner(@Nullable UUID uuid) {
+        return owner.equals(uuid);
+    }
+
+    public boolean isMember(@Nullable UUID uuid) {
+        return uuid != null && (owner.equals(uuid) || coopPlayers.contains(uuid));
     }
 
     public Optional<Player> getOwnerPlayer() {
         return Optional.ofNullable(Bukkit.getPlayer(owner));
     }
 
-    @ApiStatus.Internal
-    public void moveClaimBlock(@NotNull Location newLocation) {
-        Block oldBlock = claimBlockLocation.getBlock();
-        BlockData oldBlockData = oldBlock.getBlockData().clone();
-        oldBlock.setType(Material.AIR);
+    public @NotNull Location getClaimBlockLocation() {
+        return claimBlockLocation.clone();
+    }
 
-        this.claimBlockLocation = newLocation;
-        Block block = claimBlockLocation.getBlock();
-        block.setBlockData(oldBlockData, false);
+    public void setClaimBlockLocation(@NotNull Location location) {
+        this.claimBlockLocation = location.clone();
+        markDirty();
+    }
 
-        if (plugin.getHologramManager() != null) {
-            plugin.getHologramManager().createHologram(claimBlockLocation);
+    public long getClaimValue() {
+        return claimValue;
+    }
+
+    public void setClaimValue(long claimValue) {
+        if (this.claimValue != claimValue) {
+            this.claimValue = claimValue;
+            markDirty();
         }
     }
 
+    public @NotNull Material getClaimBlockType() {
+        return claimBlockType;
+    }
+
+    public void setClaimBlockType(@NotNull Material claimBlockType) {
+        this.claimBlockType = claimBlockType;
+        markDirty();
+    }
+
+    /** Extra chunks as {@code world,x,z}. Adding/removing updates the chunk index. */
+    public @NotNull Collection<String> getLands() {
+        return lands;
+    }
+
+    public @NotNull List<UUID> getCoopPlayers() {
+        return coopPlayers;
+    }
+
+    public @NotNull Map<UUID, Date> getCoopPlayerJoinDate() {
+        return coopPlayerJoinDate;
+    }
+
+    public @NotNull Map<UUID, CoopPermission> getCoopPermissions() {
+        return coopPermissions;
+    }
+
+    public @NotNull CoopPermission getCoopPermission(@NotNull UUID uuid) {
+        return coopPermissions.computeIfAbsent(uuid, u -> new CoopPermission());
+    }
+
+    public void addCoop(@NotNull UUID uuid) {
+        if (owner.equals(uuid) || coopPlayers.contains(uuid)) return;
+        coopPlayers.add(uuid);
+        coopPlayerJoinDate.put(uuid, new Date());
+        coopPermissions.put(uuid, new CoopPermission());
+        markDirty();
+    }
+
+    public void removeCoop(@NotNull UUID uuid) {
+        boolean changed = coopPlayers.remove(uuid);
+        coopPlayerJoinDate.remove(uuid);
+        changed |= coopPermissions.remove(uuid) != null;
+        if (changed) markDirty();
+    }
+
+    public void clearCoops() {
+        coopPlayers.clear();
+        coopPlayerJoinDate.clear();
+        coopPermissions.clear();
+        markDirty();
+    }
+
+    public @NotNull ClaimSetting getSettings() {
+        return settings;
+    }
+
+    public @NotNull Set<Material> getPurchasedBlockTypes() {
+        return purchasedBlockTypes;
+    }
+
+    public @NotNull Map<Material, Double> getBlockOffers() {
+        return blockOffers;
+    }
+
+    public boolean isForSale() {
+        return forSale;
+    }
+
+    public void setForSale(boolean forSale) {
+        this.forSale = forSale;
+        markDirty();
+    }
+
+    public double getSalePrice() {
+        return salePrice;
+    }
+
+    public void setSalePrice(double salePrice) {
+        this.salePrice = salePrice;
+        markDirty();
+    }
+
+    public boolean isRemoved() {
+        return removed;
+    }
+
+    void setRemoved() {
+        this.removed = true;
+    }
+
+    /** Queues this claim for the next asynchronous save. */
+    public void markDirty() {
+        NClaim plugin = NClaim.inst();
+        if (plugin != null && plugin.getStorage() != null && claims.isRegistered(this)) {
+            plugin.getStorage().markDirty(this);
+        }
+    }
+
+    /* ---------------- actions ---------------- */
+
+    /** Removes the claim (claim block, hologram, storage). Safe to call from any thread. */
+    public void remove(@NotNull RemoveCause cause) {
+        NClaim.inst().getClaimService().removeClaim(this, cause);
+    }
+
+    /** Internal: called by the claim service once removal is final. */
+    public void markRemoved() {
+        setRemoved();
+    }
+
+    /** @deprecated reads blocks; only call on the claim block's region thread. */
+    @Deprecated
     public boolean isSafeToTeleport() {
-        return claimBlockLocation.clone().add(0,1,0).getBlock().getType().isAir() &&
-                claimBlockLocation.clone().add(0,2,0).getBlock().getType().isAir();
+        Location loc = getClaimBlockLocation();
+        return loc.clone().add(0, 1, 0).getBlock().isPassable()
+                && loc.clone().add(0, 2, 0).getBlock().isPassable();
     }
 
-    public void teleport(Player teleporter) {
-        teleporter.teleport(claimBlockLocation.clone().add(0.5,1,0.5));
+    /** Folia-safe teleport to the claim block; see {@link nesoi.aysihuniks.nclaim.service.ClaimService#teleportToClaim}. */
+    public void teleport(@NotNull Player teleporter) {
+        NClaim.inst().getClaimService().teleportToClaim(teleporter, this);
     }
 
-    public String getDisplayName() {
-        return displayName != null ? displayName : claimId;
+    /* ---------------- static helpers ---------------- */
+
+    @Nullable
+    public static Claim getClaim(@Nullable Chunk chunk) {
+        return claims.getAt(chunk);
     }
 
-    public static String toSlug(@NotNull String input) {
-        String s = input.trim().toLowerCase(java.util.Locale.ROOT);
-
-        s = s.replace("ı", "i").replace("ğ", "g").replace("ü", "u")
-                .replace("ş", "s").replace("ö", "o").replace("ç", "c");
-        s = s.replaceAll("[^a-z0-9]+", "-");
-        s = s.replaceAll("^-+|-+$", "");
-        s = s.replaceAll("-{2,}", "-");
-
-        if (s.isEmpty()) {
-            s = "claim";
-        }
-
-        if (s.length() > 24) s = s.substring(0, 24);
-        s = s.replaceAll("^-+|-+$", "");
-        if (s.isEmpty()) s = "claim";
-
-        return s;
+    @Nullable
+    public static Claim getClaim(@Nullable Location location) {
+        return claims.getAt(location);
     }
 
-    public static Claim getClaimByIdentifier(UUID owner, String identifier) {
-        if (owner == null || identifier == null) return null;
+    public static Collection<Claim> getClaims() {
+        return claims;
+    }
+
+    public static @NotNull String toSlug(@NotNull String input) {
+        String s = input.trim().toLowerCase(Locale.ROOT)
+                .replace("ı", "i").replace("ğ", "g").replace("ü", "u")
+                .replace("ş", "s").replace("ö", "o").replace("ç", "c")
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
+        if (s.length() > 24) s = s.substring(0, 24).replaceAll("-+$", "");
+        return s.isEmpty() ? "claim" : s;
+    }
+
+    @Nullable
+    public static Claim getClaimByIdentifier(@Nullable UUID owner, @Nullable String identifier) {
+        if (owner == null || identifier == null || identifier.isBlank()) return null;
         String id = identifier.trim();
-        if (id.isEmpty()) return null;
-
-        Claim bySlug = claims.stream()
-                .filter(c -> owner.equals(c.getOwner()))
-                .filter(c -> c.getSlug().equalsIgnoreCase(id))
-                .findFirst()
-                .orElse(null);
-        if (bySlug != null) return bySlug;
-
-        return claims.stream()
-                .filter(c -> owner.equals(c.getOwner()))
-                .filter(c -> c.getClaimId().equalsIgnoreCase(id))
-                .findFirst()
-                .orElse(null);
-    }
-
-    public static Claim getClaimByName(UUID owner, String name) {
-        if (owner == null || name == null) return null;
-        String n = name.trim();
-        if (n.isEmpty()) return null;
-
-        return claims.stream()
-                .filter(c -> owner.equals(c.getOwner()))
-                .filter(c -> c.getDisplayName() != null && c.getDisplayName().equalsIgnoreCase(n))
-                .findFirst()
-                .orElse(null);
-    }
-
-    public void sellTheClaim(@NotNull Player player) {
-        UUID oldOwner = this.owner;
-        UUID newOwner = player.getUniqueId();
-
-        setOwner(newOwner);
-
-        this.forSale = false;
-
-        ClaimSettingsManager.resetToDefaults(this);
-
-        this.coopPlayers.clear();
-        this.coopPlayerJoinDate.clear();
-        this.coopPermissions.clear();
-
-        NClaim.inst().getClaimStorageManager().saveClaim(this);
-
-        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("claim.sell.bought_buyer").replace("{display_slug}", getDisplayName()).replace("{player}", User.getUser(oldOwner).getPlayer().getName()).replace("{price}", String.valueOf(getSalePrice())));
-        Player seller = Bukkit.getPlayer(oldOwner);
-        if (seller != null) {
-            ChannelType.CHAT.send(seller, NClaim.inst().getLangManager().getString("claim.sell.bought_seller").replace("{player}", player.getName()).replace("{display_slug}", getDisplayName()).replace("{price}", String.valueOf(getSalePrice())));
+        Claim byId = null;
+        for (Claim c : claims) {
+            if (!owner.equals(c.getOwner())) continue;
+            if (c.getSlug().equalsIgnoreCase(id)) return c;
+            if (byId == null && c.getClaimId().equalsIgnoreCase(id)) byId = c;
         }
+        return byId;
+    }
+
+    @Nullable
+    public static Claim getClaimByName(@Nullable UUID owner, @Nullable String name) {
+        if (owner == null || name == null || name.isBlank()) return null;
+        String n = name.trim();
+        for (Claim c : claims) {
+            if (owner.equals(c.getOwner()) && c.getDisplayName().equalsIgnoreCase(n)) return c;
+        }
+        return null;
+    }
+
+    /** Makes {@code base} unique among the owner's claims by appending {@code -2}, {@code -3}, ... */
+    @NotNull
+    public static String uniqueSlug(@NotNull UUID owner, @NotNull String base, @Nullable String ignoreClaimId) {
+        String candidate = base;
+        for (int i = 2; ; i++) {
+            final String check = candidate;
+            boolean taken = claims.stream().anyMatch(c -> owner.equals(c.getOwner())
+                    && c.getSlug().equalsIgnoreCase(check)
+                    && (ignoreClaimId == null || !c.getClaimId().equalsIgnoreCase(ignoreClaimId)));
+            if (!taken) return candidate;
+            String suffix = "-" + i;
+            int max = 24 - suffix.length();
+            candidate = (base.length() > max ? base.substring(0, Math.max(1, max)) : base) + suffix;
+        }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return this == o || (o instanceof Claim other && claimId.equals(other.claimId));
+    }
+
+    @Override
+    public int hashCode() {
+        return claimId.hashCode();
     }
 }

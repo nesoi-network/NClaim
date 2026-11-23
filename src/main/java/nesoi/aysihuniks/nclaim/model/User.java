@@ -1,133 +1,140 @@
 package nesoi.aysihuniks.nclaim.model;
 
-import lombok.Getter;
-import lombok.Setter;
+import nesoi.aysihuniks.nclaim.utils.Numbers;
 import nesoi.aysihuniks.nclaim.NClaim;
-import nesoi.aysihuniks.nclaim.database.DatabaseManager;
 import org.bukkit.Bukkit;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.nandayo.dapi.util.Util;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
 
-@Getter
-@Setter
+/**
+ * Per-player data (internal balance and cached skin texture).
+ * <p>
+ * Users are loaded asynchronously before the player joins and unloaded after they quit.
+ * Claim lists are derived from {@link Claim#claims} on demand, so they can never go stale.
+ */
 public class User {
-    private static final Collection<User> users = new ArrayList<>();
+
+    private static final Map<UUID, User> USERS = new ConcurrentHashMap<>();
+
     private final UUID uuid;
     private double balance;
-    private String skinTexture;
-    private final Collection<Claim> playerClaims;
-    private final Collection<Claim> coopClaims;
+    private volatile String skinTexture;
+    private volatile boolean dirty;
 
-    public User(UUID uuid, double balance, String skinTexture, Collection<Claim> playerClaims, Collection<Claim> coopClaims) {
+    public User(@NotNull UUID uuid, double balance, @Nullable String skinTexture) {
         this.uuid = uuid;
         this.balance = balance;
         this.skinTexture = skinTexture;
-        this.playerClaims = playerClaims;
-        this.coopClaims = coopClaims;
-        users.add(this);
     }
 
-    public Player getPlayer() {
+    public @NotNull UUID getUuid() {
+        return uuid;
+    }
+
+    public @Nullable Player getPlayer() {
         return Bukkit.getPlayer(uuid);
     }
 
+    public synchronized double getBalance() {
+        return balance;
+    }
+
+    public synchronized void setBalance(double balance) {
+        this.balance = Math.max(0, balance);
+        dirty = true;
+    }
+
+    public synchronized void addBalance(double amount) {
+        setBalance(balance + amount);
+    }
+
+    /** Atomically withdraws {@code amount}; returns {@code false} when the balance is too low. */
+    public synchronized boolean withdraw(double amount) {
+        if (amount < 0 || balance < amount) return false;
+        balance -= amount;
+        dirty = true;
+        return true;
+    }
+
     public String getFormattedBalance() {
-        return String.format("%.2f", this.balance);
+        return Numbers.format(getBalance());
     }
 
-    public void addBalance(double amount) {
-        this.balance += amount;
+    public @Nullable String getSkinTexture() {
+        return skinTexture;
     }
 
-    public static User getUser(UUID uuid) {
-        return users.stream()
-                .filter(user -> user.getUuid().equals(uuid))
-                .findFirst()
-                .orElse(null);
+    public void setSkinTexture(@Nullable String skinTexture) {
+        this.skinTexture = skinTexture;
+        dirty = true;
     }
 
-    public static void loadUser(UUID uuid) {
-        if (getUser(uuid) != null) return;
-
-        DatabaseManager dbManager = NClaim.inst().getDatabaseManager();
-        if (NClaim.inst().getNconfig().isDatabaseEnabled() && dbManager != null) {
-            loadFromDatabase(dbManager, uuid);
-        } else {
-            loadFromYaml(uuid);
-        }
+    public boolean isDirty() {
+        return dirty;
     }
 
-    private static void loadFromDatabase(DatabaseManager dbManager, UUID uuid) {
-        User user = dbManager.loadUser(uuid);
-        if (user == null) {
-            user = createNewUser(uuid);
-        }
-        updateClaimCollections(user);
+    public void clearDirty() {
+        dirty = false;
     }
 
-    private static void loadFromYaml(UUID uuid) {
-        File folder = new File(NClaim.inst().getDataFolder(), "players");
-        if (!folder.exists()) folder.mkdirs();
-
-        File file = new File(folder, uuid + ".yml");
-        FileConfiguration config = YamlConfiguration.loadConfiguration(file);
-        double balance = config.getDouble("balance");
-        String skinTexture = config.getString("skinTexture", null);
-
-        User user = new User(uuid, balance, skinTexture, new ArrayList<>(), new ArrayList<>());
-        updateClaimCollections(user);
+    public void markDirty() {
+        dirty = true;
     }
 
-    private static User createNewUser(UUID uuid) {
-        return new User(uuid, 0.0, null, new ArrayList<>(), new ArrayList<>());
+    public @NotNull Collection<Claim> getPlayerClaims() {
+        List<Claim> list = new ArrayList<>();
+        for (Claim c : Claim.claims) if (c.isOwner(uuid)) list.add(c);
+        return list;
     }
 
-    private static void updateClaimCollections(User user) {
-        user.getPlayerClaims().clear();
-        user.getCoopClaims().clear();
-
-        user.getPlayerClaims().addAll(Claim.getClaims().stream()
-                .filter(c -> c.getOwner().equals(user.getUuid()))
-                .collect(Collectors.toList()));
-
-        user.getCoopClaims().addAll(Claim.getClaims().stream()
-                .filter(c -> c.getCoopPlayers().contains(user.getUuid()))
-                .collect(Collectors.toList()));
+    public @NotNull Collection<Claim> getCoopClaims() {
+        List<Claim> list = new ArrayList<>();
+        for (Claim c : Claim.claims) if (c.getCoopPlayers().contains(uuid)) list.add(c);
+        return list;
     }
 
-    public static void saveUser(UUID uuid) {
-        User user = getUser(uuid);
-        if (user == null) return;
+    /* ---------------- registry ---------------- */
 
-        DatabaseManager dbManager = NClaim.inst().getDatabaseManager();
-        if (NClaim.inst().getNconfig().isDatabaseEnabled() && dbManager != null) {
-            dbManager.saveUser(user);
-        } else {
-            saveToYaml(user);
-        }
+    public static @Nullable User getUser(@Nullable UUID uuid) {
+        return uuid == null ? null : USERS.get(uuid);
     }
 
-    private static void saveToYaml(User user) {
-        File folder = new File(NClaim.inst().getDataFolder(), "players");
-        if (!folder.exists()) folder.mkdirs();
+    /** Returns the cached user or loads it from storage (blocking I/O; avoid on hot paths). */
+    public static @NotNull User getOrLoad(@NotNull UUID uuid) {
+        User user = USERS.get(uuid);
+        if (user != null) return user;
+        User loaded = NClaim.inst().getStorage().loadUser(uuid);
+        User existing = USERS.putIfAbsent(uuid, loaded);
+        return existing != null ? existing : loaded;
+    }
 
-        File file = new File(folder, user.getUuid() + ".yml");
-        FileConfiguration config = YamlConfiguration.loadConfiguration(file);
-        config.set("balance", user.getBalance());
-        config.set("skinTexture", user.getSkinTexture());
+    public static void loadUser(@NotNull UUID uuid) {
+        getOrLoad(uuid);
+    }
 
-        try {
-            config.save(file);
-        } catch (Exception e) {
-            Util.log("&cFailed to save user data to YAML: " + e.getMessage());
-        }
+    public static void put(@NotNull User user) {
+        USERS.putIfAbsent(user.getUuid(), user);
+    }
+
+    public static @Nullable User unload(@NotNull UUID uuid) {
+        return USERS.remove(uuid);
+    }
+
+    public static @NotNull Collection<User> getLoadedUsers() {
+        return USERS.values();
+    }
+
+    /** Queues the user for saving (no I/O on the calling thread). */
+    public static void saveUser(@NotNull UUID uuid) {
+        User user = USERS.get(uuid);
+        if (user != null) NClaim.inst().getStorage().saveUserAsync(user);
     }
 }
