@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.1.0-beta.3
+
+### New
+
+- **PvPManager support:** claims with PvP off count as safe zones for PvPManager 4.x. Combat tagged players trying
+  to enter them are stopped by PvPManager's anti border hopping (push back, or barriers on its premium version),
+  using PvPManager's own settings. Claims with PvP on can still be entered.
+- PvP cannot be turned off in a claim while the owner, or a player standing in that claim, is in combat.
+
 ## 4.1.0-beta.2
 
 ### New

@@ -39,7 +39,8 @@ Spigot and Minecraft versions before 1.21.4 are no longer supported; use NClaim 
 
 **Optional plugins:** [Vault](https://www.spigotmc.org/resources/vault.34315/) (economy), [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) (placeholders),
 WorldGuard (region blacklist), SkinsRestorer (head skins), AxSellwands, [Farmer](https://github.com/Geik-xyz/Farmer-v6)
-(one farmer per claim, co-ops are added as farmer users; add your claim worlds to `allowed-worlds` in Farmer's `config.yml`).
+(one farmer per claim, co-ops are added as farmer users; add your claim worlds to `allowed-worlds` in Farmer's `config.yml`),
+[PvPManager](https://modrinth.com/plugin/pvpmanager) (claims with PvP off are safe zones: combat tagged players are pushed back).
 
 ### Upgrading from 3.x
 
