@@ -4,6 +4,7 @@ command:
   in_cooldown: "{prefix} &cPlease wait a moment before trying again."
   wrong_usage: "{prefix} &fNeed help? Use &e/nclaim <help/?> &fto see all available commands."
   enter_a_valid_number: "{prefix} &cPlease enter a valid number."
+  invalid_value: "{prefix} &cInvalid value."
   enter_a_player: "{prefix} &cPlease enter a player name."
   player_data_not_found: "{prefix} &cPlayer data not found. &7Please rejoin and try again."
   invalid_material: "{prefix} &c{material} &fis not a valid material."
@@ -36,6 +37,7 @@ command:
     block_value_added: "{prefix} &e{block} &fvalue has been set to &e{value}&f."
     block_already_exists: "{prefix} &c{block} &calready exists in the value list."
   remove:
+    region_not_in_blacklist: "{prefix} &cThat region is not in the blacklist."
     target_removed: "{prefix} &e${amount} &fhas been removed from your balance. &7(Total: &e${balance}&7)"
     player_removed: "{prefix} &e${amount} &fhas been removed from &e{target}'s &fbalance."
     not_in_blacklist: "{prefix} &c{world} &fis not in the blacklist."
@@ -70,6 +72,8 @@ claim:
   in_blacklisted_region_or_world: "{prefix} &cYou can't do that in a blacklisted world or region."
   not_yours: "{prefix} &cThis claim doesn't belong to you."
   buy_cancelled: "{prefix} &cClaim purchase cancelled."
+  remove_cancelled: "{prefix} &cRemoving the claim was cancelled."
+  name_blacklisted: "{prefix} &cThis claim name is not allowed."
   already_claimed: "{prefix} &cThis chunk is already claimed!"
   received: "{prefix} &aYou have successfully received the claim."
   removed: "{prefix} &fThe claim in this chunk has been removed."
@@ -82,10 +86,19 @@ claim:
   name_changed_same_slug: "{prefix} &aClaim name updated. Slug remains: &e{slug}"
   name_changed_new_slug: "{prefix} &aClaim name updated. Slug changed from &7{old_slug} &ato &e{new_slug}"
   sell:
+    cancelled: "{prefix} &eYour claim &6{display_slug} &eis no longer for sale."
+    not_for_sale: "{prefix} &cThis claim is no longer for sale."
     started: "{prefix} &aYour claim &e{display_slug} &ahas been listed for sale for &e${price}&a."
     bought_buyer: "{prefix} &aYou've purchased &e{display_slug} &afrom &e{player} &afor &e${price}&a."
     bought_seller: "{prefix} &e{player} &ahas purchased your claim &e{display_slug} &afor &e${price}&a."
   block:
+    choose_a_block: "{prefix} &cChoose a block first."
+    already_listed: "{prefix} &e{block} &cis already in the list."
+    added_global: "{prefix} &a{block} &ais now available for every claim for &e${price}&a."
+    added_claim: "{prefix} &a{block} &ais now available for this claim only for &e${price}&a."
+    price_changed: "{prefix} &aPrice of &e{block} &aset to &e${price}&a."
+    removed: "{prefix} &e{block} &cwas removed from the list."
+    already_owned: "{prefix} &e{block} &cis already bought by this claim."
     purchased: "{prefix} &aClaim block successfully purchased: &e{block} &7(&e{price}$&7)"
     changed: "{prefix} &aClaim block changed: &c{old_block} &7-> &2{new_block}"
   level:
@@ -98,6 +111,7 @@ claim:
   time:
     no_time_selected: "{prefix} &cThere is no time to increase."
   land:
+    max_reached: "{prefix} &cThis claim has reached the maximum size of &e{max} &cchunks."
     already_own_chunk: "{prefix} &cYou already own this chunk!"
     already_own_land: "{prefix} &cYou already own this land!"
     not_adjacent: "{prefix} &cYou can only expand your claim to adjacent chunks!"
@@ -115,10 +129,15 @@ claim:
     add_cancelled: "&cAdding co-op player was cancelled!"
     remove_cancelled: "&cRemoving co-op player was cancelled!"
     permission_toggle_cancelled: "&cChanging co-op permission was cancelled!"
+    permission_category_toggle_cancelled: "&cChanging co-op permission category was cancelled!"
+  border:
+    enabled: "{prefix} &aNearby claim borders are now shown. &7Colors: &ayours&7, &bco-op&7, &cother players'&7. Use &e/nclaim border &7again to hide them."
+    disabled: "{prefix} &7Claim borders hidden."
   teleport:
     failed: "{prefix} &cBlocks above the claim block prevents you from teleporting."
     success: "{prefix} &aTeleported to claim."
   move:
+    blocked: "{prefix} &cThe claim block can only be moved to an empty spot."
     outside_of_chunk: "{prefix} &cYou can't move the claim block outside of its chunk."
     success: "{prefix} &aClaim block was moved successfully."
 
@@ -145,4 +164,4 @@ hologram:
   edit: "&eRight click to edit"
 
 # DO NOT CHANGE!
-lang_version: "{version}"
+lang_version: "@version@"

@@ -4,6 +4,7 @@ command:
   in_cooldown: "{prefix} &cTekrar denemeden önce lütfen bir dakika bekleyin."
   wrong_usage: "{prefix} &fYardıma mı ihtiyacınız var? Tüm komutları görmek için &e/nclaim <help/?> &fkullanın."
   enter_a_valid_number: "{prefix} &cLütfen geçerli bir sayı girin."
+  invalid_value: "{prefix} &cGeçersiz değer."
   enter_a_player: "{prefix} &cLütfen bir oyuncu adı girin."
   player_data_not_found: "{prefix} &cOyuncu verisi bulunamadı. &7Lütfen tekrar giriş yapıp deneyin."
   invalid_material: "{prefix} &c{material} &fgeçerli bir materyal değil."
@@ -36,6 +37,7 @@ command:
     block_value_added: "{prefix} &e{block} &fblok değeri &e{value} &folarak ayarlandı."
     block_already_exists: "{prefix} &c{block} &czaten değer listesinde mevcut."
   remove:
+    region_not_in_blacklist: "{prefix} &cBu bölge kara listede değil."
     target_removed: "{prefix} &e${amount} &fbakiyenizden çıkarıldı. &7(Toplam: &e${balance}&7)"
     player_removed: "{prefix} &e${amount} &f&e{target} &foyuncusunun bakiyesinden çıkarıldı."
     not_in_blacklist: "{prefix} &c{world} &fkara listede değil."
@@ -70,6 +72,8 @@ claim:
   in_blacklisted_region_or_world: "{prefix} &cBunu kara listedeki bir dünya veya bölgede yapamazsınız."
   not_yours: "{prefix} &cBu bölge size ait değil."
   buy_cancelled: "{prefix} &cBölge satın alımı iptal edildi."
+  remove_cancelled: "{prefix} &cAlanın silinmesi iptal edildi."
+  name_blacklisted: "{prefix} &cBu alan ismine izin verilmiyor."
   already_claimed: "{prefix} &cBu parça zaten alınmış!"
   received: "{prefix} &aBölgeyi başarıyla aldınız."
   removed: "{prefix} &fBu parçadaki bölge kaldırıldı."
@@ -82,10 +86,19 @@ claim:
   name_changed_same_slug: "{prefix} &aClaim ismi güncellendi. Slug değişmedi: &e{slug}"
   name_changed_new_slug: "{prefix} &aClaim ismi güncellendi. Slug &7{old_slug} &ayerine &e{new_slug} &aolarak değişti."
   sell:
+    cancelled: "{prefix} &6{display_slug} &eadlı alanın artık satılık değil."
+    not_for_sale: "{prefix} &cBu alan artık satılık değil."
     started: "{prefix} &e{display_slug} &aisimli claiminiz &e{price} &akarşılığında satışa konulmuştur."
     bought_buyer: "{prefix} &e{display_slug} &aisimli claimi &e{player} &asahibinden &e{price} &akarşılığında satın aldınız."
     bought_seller: "{prefix} &e{display_slug} &aisimli claiminiz &e{price} &akarşılığında &e{player} &atarafından alınmıştır."
   block:
+    choose_a_block: "{prefix} &cÖnce bir blok seç."
+    already_listed: "{prefix} &e{block} &czaten listede."
+    added_global: "{prefix} &a{block} &aartık tüm claimler için &e${price} &akarşılığında açık."
+    added_claim: "{prefix} &a{block} &aartık sadece bu claim için &e${price} &akarşılığında açık."
+    price_changed: "{prefix} &e{block} &afiyatı &e${price} &aolarak ayarlandı."
+    removed: "{prefix} &e{block} &clisteden kaldırıldı."
+    already_owned: "{prefix} &e{block} &czaten bu claim tarafından satın alınmış."
     purchased: "{prefix} &aClaim bloğu başarıyla satın alındı: &e{block} &7(&6{price}$&7)"
     changed: "{prefix} &aClaim bloğu değiştirildi: &c{old_block} &7-> &a{new_block}"
   level:
@@ -98,6 +111,7 @@ claim:
   time:
     no_time_selected: "{prefix} &cArtırılacak zaman seçilmedi."
   land:
+    max_reached: "{prefix} &cBu alan en fazla &e{max} &cchunk büyüklüğüne ulaştı."
     already_own_chunk: "{prefix} &cBu parça zaten sizin!"
     already_own_land: "{prefix} &cBu arazi zaten sizin!"
     not_adjacent: "{prefix} &cBölgenizi sadece bitişik parçalara genişletebilirsiniz!"
@@ -115,10 +129,15 @@ claim:
     add_cancelled: "&cOrtak oyuncu ekleme iptal edildi!"
     remove_cancelled: "&cOrtak oyuncu çıkarma iptal edildi!"
     permission_toggle_cancelled: "&cOrtak yetki değişikliği iptal edildi!"
+    permission_category_toggle_cancelled: "&cİzin kategorisi değişikliği iptal edildi!"
+  border:
+    enabled: "{prefix} &aYakındaki alanların sınırları gösteriliyor. &7Renkler: &asenin&7, &bco-op&7, &cbaşkasının&7. Gizlemek için tekrar &e/nclaim border &7yaz."
+    disabled: "{prefix} &7Alan sınırları gizlendi."
   teleport:
     failed: "{prefix} &cBölgede blokunun üstündeki bloklar ışınlanmanı engelliyor."
     success: "{prefix} &aBölgeye ışınlanıldı."
   move:
+    blocked: "{prefix} &cAlan bloğu sadece boş bir yere taşınabilir."
     outside_of_chunk: "{prefix} &cBölge blokunu chunk dışına taşıyamazsın."
     success: "{prefix} &aBölge bloku başarıyla taşındı."
 
@@ -698,4 +717,4 @@ menu:
         display_name: "&c-6 {unit}"
 
 # DEĞİŞTİRMEYİN!
-lang_version: "{version}"
+lang_version: "@version@"

@@ -4,6 +4,7 @@ command:
   in_cooldown: '{prefix} &cVeuillez patienter un instant avant de réessayer.'
   wrong_usage: '{prefix} &fBesoin d’aide ? Utilisez &e/nclaim <help/?> &fpour voir toutes les commandes disponibles.'
   enter_a_valid_number: '{prefix} &cVeuillez entrer un nombre valide.'
+  invalid_value: "{prefix} &cValeur invalide."
   enter_a_player: '{prefix} &cVeuillez entrer un nom de joueur.'
   player_data_not_found: '{prefix} &cDonnées du joueur introuvables. &7Veuillez vous reconnecter et réessayer.'
   invalid_material: '{prefix} &c{material} &cn’est pas un matériau valide.'
@@ -36,6 +37,7 @@ command:
     block_value_added: '{prefix} &e{block} &fvaleur définie sur &e{value}&f.'
     block_already_exists: '{prefix} &c{block} existe déjà dans la liste des valeurs.'
   remove:
+    region_not_in_blacklist: "{prefix} &cCette région n'est pas dans la liste noire."
     target_removed: '{prefix} &e${amount} &fa été retiré de votre solde. &7(Total : &e${balance}&7)'
     player_removed: '{prefix} &e${amount} &fa été retiré du solde de &e{target}&f.'
     not_in_blacklist: '{prefix} &c{world} ne figure pas dans la liste noire.'
@@ -70,6 +72,8 @@ claim:
   in_blacklisted_region_or_world: '{prefix} &cAction impossible dans un monde ou une région en liste noire.'
   not_yours: '{prefix} &cCette revendication ne vous appartient pas.'
   buy_cancelled: '{prefix} &cAchat de la revendication annulé.'
+  remove_cancelled: "{prefix} &cLa suppression du claim a été annulée."
+  name_blacklisted: "{prefix} &cCe nom de claim n'est pas autorisé."
   already_claimed: '{prefix} &cCe chunk est déjà revendiqué !'
   received: '{prefix} &aVous avez reçu la revendication avec succès.'
   removed: '{prefix} &fLa revendication de ce chunk a été supprimée.'
@@ -82,10 +86,19 @@ claim:
   name_changed_same_slug: '{prefix} &aNom du claim mis à jour. Le slug reste identique : &e{slug}'
   name_changed_new_slug: '{prefix} &aNom du claim mis à jour. Slug modifié de &7{old_slug} &aà &e{new_slug}'
   sell:
+    cancelled: "{prefix} &eVotre claim &6{display_slug} &en'est plus à vendre."
+    not_for_sale: "{prefix} &cCe claim n'est plus à vendre."
     started: '{prefix} &aVotre claim &e{display_slug} &aa été mis en vente pour &e{price}&a.'
     bought_buyer: '{prefix} &aFélicitations ! Vous avez acheté le claim &e{display_slug} &ade &e{player} &apour &e{price}&a.'
     bought_seller: '{prefix} &aLe joueur &e{player} &avient d’acheter votre claim &e{display_slug} &apour &e{price}&a.'
   block:
+    choose_a_block: '{prefix} &cChoisissez d''abord un bloc.'
+    already_listed: '{prefix} &e{block} &cest déjà dans la liste.'
+    added_global: '{prefix} &a{block} &aest maintenant disponible pour tous les claims pour &e${price}&a.'
+    added_claim: '{prefix} &a{block} &aest maintenant disponible pour ce claim uniquement pour &e${price}&a.'
+    price_changed: '{prefix} &aPrix de &e{block} &adéfini à &e${price}&a.'
+    removed: '{prefix} &e{block} &ca été retiré de la liste.'
+    already_owned: '{prefix} &e{block} &ca déjà été acheté par ce claim.'
     purchased: '{prefix} &aBloc de revendication acheté : &e{block} &7(&e{price}$&7)'
     changed: '{prefix} &aBloc de revendication changé : &c{old_block} &7-> &2{new_block}'
   level:
@@ -98,6 +111,7 @@ claim:
   time:
     no_time_selected: '{prefix} &cAucun temps sélectionné pour augmenter.'
   land:
+    max_reached: "{prefix} &cCe claim a atteint la taille maximale de &e{max} &cchunks."
     already_own_chunk: '{prefix} &cVous possédez déjà ce chunk !'
     already_own_land: '{prefix} &cVous possédez déjà cette terre !'
     not_adjacent: '{prefix} &cVous ne pouvez étendre qu''à des chunks adjacents !'
@@ -115,10 +129,15 @@ claim:
     add_cancelled: '&cAjout de joueur en coop annulé !'
     remove_cancelled: '&cSuppression de joueur en coop annulée !'
     permission_toggle_cancelled: '&cChangement de permission coop annulé !'
+    permission_category_toggle_cancelled: "&cLe changement de catégorie de permissions a été annulé !"
+  border:
+    enabled: "{prefix} &aBordures des claims proches affichées. &7Couleurs : &ales vôtres&7, &bco-op&7, &cautres joueurs&7. Refaites &e/nclaim border &7pour les masquer."
+    disabled: "{prefix} &7Bordures du claim masquées."
   teleport:
     failed: '{prefix} &cDes blocs au-dessus du bloc de protection vous empêchent de vous téléporter.'
     success: '{prefix} &aTéléporté à la protection.'
   move:
+    blocked: "{prefix} &cLe bloc du claim ne peut être déplacé que vers un emplacement vide."
     outside_of_chunk: '{prefix} &cVous ne pouvez pas déplacer le bloc de protection en dehors de son chunk.'
     success: '{prefix} &aBloc de protection déplacé avec succès.'
 
@@ -144,4 +163,4 @@ hologram:
   edit: '&eClic droit pour éditer'
 
 # NE PAS CHANGER!
-lang_version: '{version}'
+lang_version: "@version@"

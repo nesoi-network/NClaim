@@ -5,123 +5,148 @@ import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.enums.Setting;
 import nesoi.aysihuniks.nclaim.model.SettingCfg;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
-import org.nandayo.dapi.util.Util;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.Date;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
+/** guis.yml: menu titles, item names/lore and item materials. */
 public class GuiLangManager {
 
     @Getter
     private FileConfiguration guiConfig;
 
     private final HeadManager headManager;
-    private final Map<Setting, SettingCfg> settingConfigs;
+    private final Map<Setting, SettingCfg> settingConfigs = new EnumMap<>(Setting.class);
 
     public GuiLangManager() {
         this.headManager = NClaim.inst().getHeadManager();
-        this.settingConfigs = new HashMap<>();
         load();
         updateConfig();
     }
 
+    private File file() {
+        return new File(NClaim.inst().getDataFolder(), "guis.yml");
+    }
+
     public void load() {
-        File file = new File(NClaim.inst().getDataFolder(), "guis.yml");
-        if (!file.exists()) {
-            NClaim.inst().saveResource("guis.yml", false);
-        }
+        File file = file();
+        if (!file.exists()) NClaim.inst().saveResource("guis.yml", false);
         this.guiConfig = YamlConfiguration.loadConfiguration(file);
         loadSettingConfigs();
     }
 
+    /** Adds entries introduced by a new version; never overwrites what the server owner changed. */
     public GuiLangManager updateConfig() {
-        File file = new File(NClaim.inst().getDataFolder(), "guis.yml");
-        String version = NClaim.inst().getDescription().getVersion();
-        String currentGuiVersion = guiConfig.getString("gui_version", "0");
-
-        if (!version.equals(currentGuiVersion)) {
-            Util.log("&eNew GUI version detected (" + version + "), updating guis.yml...");
-
-            saveBackupConfig();
-
-            guiConfig.options().copyDefaults(true);
-
-            InputStream defStream = NClaim.inst().getResource("guis.yml");
-            if (defStream != null) {
-                YamlConfiguration defConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(defStream));
-                guiConfig.setDefaults(defConfig);
-            }
-
+        String version = NClaim.inst().getPluginMeta().getVersion();
+        String stored = guiConfig.getString("gui_version");
+        if (version.equals(stored)) return this;
+        // Layouts differ between major versions, so an older file is moved to backups/ and replaced, not merged.
+        if (major(stored) < major(version)) {
+            backup();
+            NClaim.inst().saveResource("guis.yml", true);
+            guiConfig = YamlConfiguration.loadConfiguration(file());
             guiConfig.set("gui_version", version);
             try {
-                guiConfig.save(file);
-                Util.log("&aGUI configuration successfully updated to version " + version + "!");
+                guiConfig.save(file());
             } catch (IOException e) {
-                Util.log("&cAn error occurred while saving the GUI configuration!");
+                Msg.log("&cCould not update guis.yml: " + e.getMessage());
             }
+            Msg.log("&eguis.yml was replaced with the " + version + " menus; your old file is in backups/.");
+            loadSettingConfigs();
+            return this;
         }
+        InputStream defStream = NClaim.inst().getResource("guis.yml");
+        if (defStream == null) return this;
+        YamlConfiguration def = YamlConfiguration.loadConfiguration(new InputStreamReader(defStream, StandardCharsets.UTF_8));
+        boolean changed = false;
+        for (String key : def.getKeys(true)) {
+            if (def.isConfigurationSection(key) || guiConfig.contains(key, true)) continue;
+            guiConfig.set(key, def.get(key));
+            changed = true;
+        }
+        if (changed) backup();
+        guiConfig.set("gui_version", version);
+        try {
+            guiConfig.save(file());
+            if (changed) Msg.log("&aAdded new entries to guis.yml for version " + version + ".");
+        } catch (IOException e) {
+            Msg.log("&cCould not update guis.yml: " + e.getMessage());
+        }
+        loadSettingConfigs();
         return this;
     }
 
-    private void saveBackupConfig() {
-        File backupDir = new File(NClaim.inst().getDataFolder(), "backups");
-        if (!backupDir.exists()) {
-            backupDir.mkdirs();
-        }
-        String date = new SimpleDateFormat("dd-MM-yyyy-HH-mm-ss").format(new Date());
-        File backupFile = new File(backupDir, "guis_" + date + ".yml");
+    /** Major part of a version such as "4.0.0"; 0 when missing or unreadable (files from before 4.0). */
+    private static int major(String version) {
+        if (version == null) return 0;
+        int end = 0;
+        while (end < version.length() && Character.isDigit(version.charAt(end))) end++;
         try {
-            guiConfig.save(backupFile);
-            Util.log("&aBacked up old GUI configuration file.");
-        } catch (Exception e) {
-            Util.log("&cFailed to save GUI backup file.");
+            return end == 0 ? 0 : Integer.parseInt(version.substring(0, end));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private void backup() {
+        File dir = new File(NClaim.inst().getDataFolder(), "backups");
+        if (!dir.exists() && !dir.mkdirs()) return;
+        String date = new SimpleDateFormat("dd-MM-yyyy-HH-mm-ss").format(new Date());
+        try {
+            Files.copy(file().toPath(), new File(dir, "guis_" + date + ".yml").toPath());
+        } catch (IOException e) {
+            Msg.log("&cFailed to back up guis.yml: " + e.getMessage());
         }
     }
 
     private void loadSettingConfigs() {
-        ConfigurationSection settingsSection = guiConfig.getConfigurationSection("guis.claim_settings_menu.settings");
-        if (settingsSection == null) return;
-
-        for (String key : settingsSection.getKeys(false)) {
-            ConfigurationSection settingSection = settingsSection.getConfigurationSection(key);
-            if (settingSection == null) continue;
-
-            boolean defaultValue = settingSection.getBoolean("default_value", false);
-            boolean changeable = settingSection.getBoolean("changeable", true);
-            String permission = settingSection.getString("permission", null);
-            String displayName = settingSection.getString("display_name", key);
-            String material = settingSection.getString("material", "DIRT");
-            List<String> lore = settingSection.getStringList("lore");
-
-            Setting settingEnum = getSettingByKey(key);
-            if (settingEnum != null) {
-                settingConfigs.put(settingEnum, new SettingCfg(defaultValue, changeable, permission, displayName, material, lore));
-            }
+        settingConfigs.clear();
+        ConfigurationSection settings = guiConfig.getConfigurationSection("guis.claim_settings_menu.settings");
+        if (settings == null) return;
+        for (String key : settings.getKeys(false)) {
+            ConfigurationSection s = settings.getConfigurationSection(key);
+            Setting setting = settingByKey(key);
+            if (s == null || setting == null) continue;
+            settingConfigs.put(setting, new SettingCfg(
+                    s.getBoolean("default_value", false),
+                    s.getBoolean("changeable", true),
+                    s.getString("permission", null),
+                    s.getString("display_name", key),
+                    s.getString("material", "DIRT"),
+                    s.getStringList("lore")));
         }
     }
 
-    private Setting getSettingByKey(String key) {
-        switch (key) {
-            case "pvp": return Setting.CLAIM_PVP;
-            case "tnt_explosions": return Setting.TNT_DAMAGE;
-            case "creeper_explosions": return Setting.CREEPER_DAMAGE;
-            case "mob_attacks": return Setting.MOB_ATTACKING;
-            case "monster_spawning": return Setting.MONSTER_SPAWNING;
-            case "animal_spawning": return Setting.ANIMAL_SPAWNING;
-            case "villager_interactions": return Setting.VILLAGER_INTERACTION;
-            default: return null;
-        }
+    private static Setting settingByKey(String key) {
+        return switch (key) {
+            case "pvp" -> Setting.CLAIM_PVP;
+            case "tnt_explosions" -> Setting.TNT_DAMAGE;
+            case "creeper_explosions" -> Setting.CREEPER_DAMAGE;
+            case "mob_attacks" -> Setting.MOB_ATTACKING;
+            case "monster_spawning" -> Setting.MONSTER_SPAWNING;
+            case "animal_spawning" -> Setting.ANIMAL_SPAWNING;
+            case "villager_interactions" -> Setting.VILLAGER_INTERACTION;
+            case "fire_spread" -> Setting.FIRE_SPREAD;
+            case "mob_griefing" -> Setting.MOB_GRIEFING;
+            case "crop_trampling" -> Setting.CROP_TRAMPLING;
+            case "other_explosions" -> Setting.OTHER_EXPLOSIONS;
+            default -> Setting.byName(key);
+        };
     }
 
     public SettingCfg getSettingConfig(Setting setting) {
@@ -142,9 +167,7 @@ public class GuiLangManager {
 
     public String getString(String fullPath) {
         String value = guiConfig.getString("guis." + fullPath);
-        if (value == null) {
-            Util.log("&cPath not found: " + fullPath);
-        }
+        if (value == null) Msg.log("&cguis.yml path not found: " + fullPath);
         return value;
     }
 
@@ -161,57 +184,60 @@ public class GuiLangManager {
     }
 
     public ItemStack getMaterial(String section, String path) {
-        String materialName = guiConfig.getString("guis." + section + "." + path + ".material");
-        return resolveItemStack(materialName, "guis." + section + "." + path);
+        return getMaterial(section + "." + path);
     }
 
     public ItemStack getMaterial(String fullPath) {
-        String materialName = guiConfig.getString("guis." + fullPath + ".material");
-        return resolveItemStack(materialName, "guis." + fullPath);
+        return resolveItemStack(guiConfig.getString("guis." + fullPath + ".material"), "guis." + fullPath);
     }
 
-    private ItemStack resolveItemStack(String materialName, String logPath) {
-        if (materialName == null) {
-            Util.log("Material not found for path: " + logPath + ". Using DIRT as default.");
+    /** The material name configured at a path, for comparing clicked items with menu state. */
+    public String getMaterialName(String fullPath) {
+        return guiConfig.getString("guis." + fullPath + ".material");
+    }
+
+    /**
+     * Formats: {@code STONE}, {@code STONE:1001} (custom model data), {@code HEAD-<texture>}
+     * (base64 or textures.minecraft.net id) and {@code HEAD-<texture>:1001}.
+     */
+    private ItemStack resolveItemStack(String raw, String logPath) {
+        if (raw == null || raw.isBlank()) {
+            Msg.log("&cMaterial not set at " + logPath + ", using DIRT.");
             return new ItemStack(Material.DIRT);
         }
-
-        String matName = materialName;
+        String spec = raw.trim();
         Integer customModelData = null;
-
-        if (materialName.contains(":")) {
-            String[] split = materialName.split(":");
-            matName = split[0];
-            try {
-                customModelData = Integer.parseInt(split[1]);
-            } catch (NumberFormatException e) {
-                Util.log("Invalid custom model data '" + split[1] + "' for path: " + logPath);
-            }
+        int colon = spec.lastIndexOf(':');
+        if (colon > 0 && spec.substring(colon + 1).chars().allMatch(Character::isDigit) && colon < spec.length() - 1) {
+            customModelData = Integer.parseInt(spec.substring(colon + 1));
+            spec = spec.substring(0, colon);
         }
 
         ItemStack item;
-        if (matName.toUpperCase().startsWith("HEAD")) {
-            String texture = matName.length() > 4 ? matName.substring(5) : "";
+        if (spec.toUpperCase(Locale.ROOT).startsWith("HEAD")) {
+            String texture = spec.length() > 5 ? spec.substring(5) : "";
             item = headManager.createHeadWithTexture(texture);
         } else {
-            try {
-                Material material = Material.valueOf(matName.toUpperCase());
-                item = new ItemStack(material);
-            } catch (IllegalArgumentException e) {
-                Util.log("Invalid material name '" + matName + "' for path: " + logPath);
-                item = new ItemStack(Material.DIRT);
+            Material material = Material.matchMaterial(spec);
+            if (material == null || !material.isItem()) {
+                Msg.log("&cInvalid material '" + spec + "' at " + logPath + ", using DIRT.");
+                material = Material.DIRT;
             }
+            item = new ItemStack(material);
         }
 
         if (customModelData != null) {
             ItemMeta meta = item.getItemMeta();
             if (meta != null) {
-                NamespacedKey customModelKey = new NamespacedKey(NClaim.inst(), "custom_model_data");
-                meta.getPersistentDataContainer().set(customModelKey, PersistentDataType.INTEGER, customModelData);
+                applyCustomModelData(meta, customModelData);
                 item.setItemMeta(meta);
             }
         }
-
         return item;
+    }
+
+    @SuppressWarnings({"deprecation", "removal"})
+    private static void applyCustomModelData(ItemMeta meta, int value) {
+        meta.setCustomModelData(value);
     }
 }
