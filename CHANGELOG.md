@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.0-beta.2
+
+### New
+
+- **Custom menu items:** `material` in `guis.yml` also accepts `itemsadder:namespace:id`, `nexo:id`, `oraxen:id` and
+  `model:namespace:key` (resource pack item models, 1.21.4+), next to `STONE`, `PAPER:1001` (custom model data)
+  and `HEAD-<texture>`. None of these plugins is required.
+
 ## 4.1.0-beta.1
 
 ### New

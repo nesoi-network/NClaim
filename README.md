@@ -22,6 +22,7 @@ NClaim is a fully customizable chunk claim plugin for Paper and Folia servers. P
 - 🌍 **World / WorldGuard region blacklists.**
 - 📦 **Storage:** YAML, SQLite or MySQL.
 - 🪧 **Built-in holograms:** vanilla text displays, no hologram plugin needed. Choose, order and add your own lines (colours, PlaceholderAPI), and set height, size and background in `hologram_settings`.
+- 🎨 **Custom menu items:** menu icons can be any item, custom model data, a resource pack item model, a player head, or an ItemsAdder, Nexo or Oraxen item (see the top of `guis.yml`).
 - 🧵 **Folia ready:** world access runs on the owning region thread, disk and database work runs off the main thread.
 - 🔄 **Safe updates:** new config entries are added without touching your values.
 
