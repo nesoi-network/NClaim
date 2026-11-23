@@ -7,7 +7,7 @@ libraries:
   - com.zaxxer:HikariCP:7.0.2
 authors: [ aysihuniks, yoshii01 ]
 description: Advanced Chunk Claim System
-softdepend: [PlaceholderAPI, Vault, SkinsRestorer, WorldGuard, AxSellwands, Farmer]
+softdepend: [PlaceholderAPI, Vault, SkinsRestorer, WorldGuard, AxSellwands, Farmer, PvPManager]
 commands:
   nclaim:
     aliases: [ nc, claim ]

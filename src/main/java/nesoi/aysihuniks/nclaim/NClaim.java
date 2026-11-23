@@ -8,6 +8,7 @@ import nesoi.aysihuniks.nclaim.hologram.HologramManager;
 import nesoi.aysihuniks.nclaim.integrations.AxSellWand;
 import nesoi.aysihuniks.nclaim.integrations.Expansion;
 import nesoi.aysihuniks.nclaim.integrations.farmer.FarmerIntegration;
+import nesoi.aysihuniks.nclaim.integrations.PvPManagerIntegration;
 import nesoi.aysihuniks.nclaim.integrations.Metrics;
 import nesoi.aysihuniks.nclaim.model.Claim;
 import nesoi.aysihuniks.nclaim.model.User;
@@ -71,6 +72,12 @@ public final class NClaim extends JavaPlugin {
     }
 
     @Override
+    public void onLoad() {
+        // Before PvPManager enables: it only starts its push back if a region hook exists by then.
+        if (getServer().getPluginManager().getPlugin("PvPManager") != null) PvPManagerIntegration.register();
+    }
+
+    @Override
     public void onEnable() {
         instance = this;
         Scheduler.init(this);
@@ -115,6 +122,7 @@ public final class NClaim extends JavaPlugin {
     @Override
     public void onDisable() {
         stopTasks();
+        if (getServer().getPluginManager().getPlugin("PvPManager") != null) PvPManagerIntegration.unregister();
         Scheduler.cancelAll();
         if (hologramManager != null) hologramManager.shutdown();
         if (claimVisualizerService != null) claimVisualizerService.shutdown();

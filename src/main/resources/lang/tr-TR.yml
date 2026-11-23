@@ -79,6 +79,7 @@ claim:
   removed: "{prefix} &fBu parçadaki bölge kaldırıldı."
   expired: "{prefix} &fBölgenin süresi doldu ve kaldırıldı &7(&e{x}&7, &e{z}&7)."
   setting_change_cancelled: "&cAyar değişikliği iptal edildi!"
+  pvp_off_in_combat: "&cSavaştayken ya da claim'de savaşta olan biri varken PvP'yi kapatamazsın."
   pvp_not_allowed: "{prefix} &cBu bölgede PvP'ye izin verilmiyor."
   transferred: "&aClaim başarıyla &e{player} &aadlı oyuncuya devredildi"
   name_cleared: "{prefix} &aClaim ismi sıfırlandı. Slug tekrar &e{slug} &aolarak ayarlandı."

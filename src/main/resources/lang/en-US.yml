@@ -79,6 +79,7 @@ claim:
   removed: "{prefix} &fThe claim in this chunk has been removed."
   expired: "{prefix} &fClaim has expired and was removed &7(&e{x}&7, &e{z}&7)."
   setting_change_cancelled: "&cSetting change was cancelled!"
+  pvp_off_in_combat: "&cYou cannot turn off PvP while you or someone in this claim is in combat."
   pvp_not_allowed: "{prefix} &cPvP is not allowed in this claim."
   transferred: "&aClaim successfully transferred to &e{player}"
   name_cleared: "{prefix} &aClaim name cleared. Slug reverted to: &e{slug}"

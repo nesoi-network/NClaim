@@ -75,6 +75,7 @@ dependencies {
     compileOnly("net.skinsrestorer:skinsrestorer-api:15.8.2")
     compileOnly("com.artillexstudios:AxSellwands:1.11.0") { isTransitive = false }
     compileOnly(files(farmerJar).builtBy(fetchFarmer))
+    compileOnly("me.chancesd.pvpmanager:pvpmanager:4.0.30") { isTransitive = false }
 
     // Compile-time only (generates getters/setters); not part of the jar.
     compileOnly("org.projectlombok:lombok:1.18.48")

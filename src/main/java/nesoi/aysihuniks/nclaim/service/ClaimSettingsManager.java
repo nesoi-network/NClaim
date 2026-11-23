@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.api.events.ClaimSettingChangeEvent;
 import nesoi.aysihuniks.nclaim.enums.Setting;
+import nesoi.aysihuniks.nclaim.integrations.PvPManagerIntegration;
 import nesoi.aysihuniks.nclaim.model.Claim;
 import nesoi.aysihuniks.nclaim.model.SettingCfg;
 import org.bukkit.Bukkit;
@@ -32,6 +33,14 @@ public class ClaimSettingsManager {
         }
 
         boolean newState = !claim.getSettings().isEnabled(setting);
+
+        // Turning PvP off mid-fight would be an escape; PvPManager would also keep teleporting tagged players.
+        if (setting == Setting.CLAIM_PVP && !newState
+                && Bukkit.getPluginManager().isPluginEnabled("PvPManager")
+                && PvPManagerIntegration.fightInProgress(claim, player)) {
+            Msg.send(player, plugin.getLangManager().getString("claim.pvp_off_in_combat"));
+            return;
+        }
 
         ClaimSettingChangeEvent changeEvent = new ClaimSettingChangeEvent(claim, claim.getSettings(), player, newState);
         Bukkit.getPluginManager().callEvent(changeEvent);
