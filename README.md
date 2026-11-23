@@ -21,7 +21,7 @@ NClaim is a fully customizable chunk claim plugin for Paper and Folia servers. P
 - ⏳ **Expiration:** claims expire after a configurable time unless extended.
 - 🌍 **World / WorldGuard region blacklists.**
 - 📦 **Storage:** YAML, SQLite or MySQL.
-- 🪧 **Built-in holograms:** vanilla text displays, no hologram plugin needed.
+- 🪧 **Built-in holograms:** vanilla text displays, no hologram plugin needed. Choose, order and add your own lines (colours, PlaceholderAPI), and set height, size and background in `hologram_settings`.
 - 🧵 **Folia ready:** world access runs on the owning region thread, disk and database work runs off the main thread.
 - 🔄 **Safe updates:** new config entries are added without touching your values.
 

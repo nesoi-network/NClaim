@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.1.0-beta.1
+
+### New
+
+- **Hologram lines:** `hologram_settings.lines` in `config.yml` sets which lines the hologram shows and in what order.
+  Built-in lines (`title`, `owner`, `time_left`, `coop_count`, `total_size`, `value`, `edit`) use the texts from
+  the language file; any other line is shown as written, with `{owner}`, `{value}`, `{time_left}` and the other
+  claim values, colour codes and PlaceholderAPI placeholders.
+- **Hologram look:** `height`, `scale`, `background` and `shadow` in `hologram_settings`.
+- **`value` hologram line** showing the claim value.
+
+### Changed
+
+- The `show_title`, `show_owner` ... switches are replaced by the line list. Your choices are moved to
+  `hologram_settings.lines` on the first start, nothing to do by hand.
+- Servers on a beta are told when the final release is out.
+
 ## 4.0.1
 
 ### New
