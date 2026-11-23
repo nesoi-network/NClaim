@@ -12,7 +12,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.nandayo.dapi.message.ChannelType;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -43,16 +43,31 @@ public class AllCommandExecutor implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
+        if (args.length > 0 && args[0].equals("?")) args[0] = "help";
+
         if (!(sender instanceof Player)) {
-            ChannelType.CHAT.send(sender, NClaim.inst().getLangManager().getString("command.must_be_player"));
+            // The console may run reload and the add/remove/set admin commands; everything else needs a player.
+            BaseCommand consoleCmd = args.length >= 2 && args[0].equalsIgnoreCase("admin")
+                    ? adminCommands.get(args[1].toLowerCase()) : null;
+            if (consoleCmd instanceof ReloadCommand || consoleCmd instanceof AddCommand
+                    || consoleCmd instanceof RemoveCommand || consoleCmd instanceof SetCommand) {
+                return consoleCmd.onCommand(sender, command, label, Arrays.copyOfRange(args, 1, args.length));
+            }
+            Msg.send(sender, NClaim.inst().getLangManager().getString("command.must_be_player"));
             return true;
         }
 
         Player player = (Player) sender;
 
+        if (args.length > 0 && args[0].equalsIgnoreCase("border")) {
+            boolean on = NClaim.inst().getClaimVisualizerService().toggleBorders(player);
+            Msg.send(player, NClaim.inst().getLangManager().getString(on ? "claim.border.enabled" : "claim.border.disabled"));
+            return true;
+        }
+
         if (args.length == 0) {
             if (!player.hasPermission("nclaim.use")) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
                 return true;
             }
             new ClaimMainMenu(player);
@@ -63,7 +78,7 @@ public class AllCommandExecutor implements CommandExecutor, TabCompleter {
 
         if (subCommand.equals("admin")) {
             if (!player.hasPermission("nclaim.admin")) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
                 return true;
             }
 
@@ -78,7 +93,7 @@ public class AllCommandExecutor implements CommandExecutor, TabCompleter {
             if (adminCmd != null) {
                 return adminCmd.onCommand(sender, command, label, Arrays.copyOfRange(args, 1, args.length));
             } else {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
                 return true;
             }
         }
@@ -88,7 +103,7 @@ public class AllCommandExecutor implements CommandExecutor, TabCompleter {
             return cmd.onCommand(sender, command, label, args);
         }
 
-        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
+        Msg.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
         return true;
     }
 
@@ -102,6 +117,7 @@ public class AllCommandExecutor implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             completions.addAll(commands.keySet());
+            completions.add("border");
             if (sender.hasPermission("nclaim.admin")) {
                 completions.add("admin");
             }

@@ -14,7 +14,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.WorldInfo;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.message.ChannelType;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,20 +26,15 @@ public class AddCommand extends BaseCommand {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         LangManager langManager = NClaim.inst().getLangManager();
-        if (!(sender instanceof Player)) {
-            ChannelType.CHAT.send(sender, langManager.getString("command.must_be_player"));
-            return true;
-        }
-
-        Player player = (Player) sender;
+        CommandSender player = sender; // console allowed: these commands never need a location
 
         if (!player.hasPermission("nclaim.add") && !player.hasPermission("nclaim.admin")) {
-            ChannelType.CHAT.send(player, langManager.getString("command.permission.denied"));
+            Msg.send(player, langManager.getString("command.permission_denied"));
             return true;
         }
 
         if (args.length < 3) {
-            ChannelType.CHAT.send(player, langManager.getString("command.wrong_usage"));
+            Msg.send(player, langManager.getString("command.wrong_usage"));
             return true;
         }
 
@@ -57,7 +52,7 @@ public class AddCommand extends BaseCommand {
                 handleBlockValueAdd(player, args);
                 break;
             default:
-                ChannelType.CHAT.send(player, langManager.getString("command.wrong_usage"));
+                Msg.send(player, langManager.getString("command.wrong_usage"));
                 break;
         }
 
@@ -65,9 +60,9 @@ public class AddCommand extends BaseCommand {
     }
 
 
-    private void handleBalanceAdd(Player player, String[] args) {
+    private void handleBalanceAdd(CommandSender player, String[] args) {
         if (args.length < 4) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
             return;
         }
 
@@ -77,38 +72,32 @@ public class AddCommand extends BaseCommand {
             Player targetPlayer = NClaim.inst().getServer().getPlayer(targetName);
 
             if (targetPlayer == null) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.player.not_found").replace("{target}", targetName));
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.player.not_found").replace("{target}", targetName));
                 return;
             }
 
-            User user = User.getUser(targetPlayer.getUniqueId());
-            if (user == null) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.player_data_not_found"));
+            if (amount <= 0 || Double.isNaN(amount) || Double.isInfinite(amount)) {
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.enter_a_valid_number"));
                 return;
             }
-
-            if (NClaim.inst().getBalanceSystem() == Balance.VAULT) {
-                NClaim.inst().getEconomy().depositPlayer(targetPlayer, amount);
-                ChannelType.CHAT.send(targetPlayer, NClaim.inst().getLangManager().getString("command.add.target_added").replace("{amount}", String.valueOf(amount)).replace("{balance}", String.valueOf(NClaim.inst().getEconomy().getBalance(targetPlayer))));
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.add.player_added").replace("{amount}", String.valueOf(amount)).replace("{target}", targetName));
-            } else {
-                user.addBalance(amount);
-                ChannelType.CHAT.send(targetPlayer, NClaim.inst().getLangManager().getString("command.add.target_added").replace("{amount}", String.valueOf(amount)).replace("{balance}", String.valueOf(user.getBalance())));
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.add.player_added").replace("{amount}", String.valueOf(amount)).replace("{target}", targetName));
-            }
+            var economy = NClaim.inst().getEconomyService();
+            economy.deposit(targetPlayer, amount);
+            String balance = nesoi.aysihuniks.nclaim.service.EconomyService.format(economy.balance(targetPlayer));
+            Msg.send(targetPlayer, NClaim.inst().getLangManager().getString("command.add.target_added").replace("{amount}", nesoi.aysihuniks.nclaim.utils.Numbers.full(amount)).replace("{balance}", balance));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.add.player_added").replace("{amount}", nesoi.aysihuniks.nclaim.utils.Numbers.full(amount)).replace("{target}", targetName));
         } catch (NumberFormatException e) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.enter_a_valid_number"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.enter_a_valid_number"));
         }
     }
 
-    private void handleBlacklistedWorldAdd(Player player, String worldName) {
-        List<String> blacklistedWorlds = NClaim.inst().getNconfig().getBlacklistedWorlds();
+    private void handleBlacklistedWorldAdd(CommandSender player, String worldName) {
+        List<String> blacklistedWorlds = new java.util.ArrayList<>(NClaim.inst().getNconfig().getBlacklistedWorlds());
         if (blacklistedWorlds == null) {
             blacklistedWorlds = new ArrayList<>();
         }
 
         if (blacklistedWorlds.contains(worldName)) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.add.world_already_in_blacklist").replace("{world}", worldName));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.add.world_already_in_blacklist").replace("{world}", worldName));
             return;
         }
 
@@ -116,19 +105,19 @@ public class AddCommand extends BaseCommand {
         NClaim.inst().getNconfig().setBlacklistedWorlds(blacklistedWorlds);
         NClaim.inst().getNconfig().save();
 
-        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.add.world_added_to_blacklist").replace("{world}", worldName));
+        Msg.send(player, NClaim.inst().getLangManager().getString("command.add.world_added_to_blacklist").replace("{world}", worldName));
     }
 
-    private void handleBlacklistedRegionAdd(Player player, String regionName) {
+    private void handleBlacklistedRegionAdd(CommandSender player, String regionName) {
         if (!NClaim.inst().isWorldGuardEnabled()) return;
 
-        List<String> blacklistedRegions = NClaim.inst().getNconfig().getBlacklistedRegions();
+        List<String> blacklistedRegions = new java.util.ArrayList<>(NClaim.inst().getNconfig().getBlacklistedRegions());
         if (blacklistedRegions == null) {
             blacklistedRegions = new ArrayList<>();
         }
 
         if (blacklistedRegions.contains(regionName)) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.add.region_already_in_blacklist")
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.add.region_already_in_blacklist")
                     .replace("{region}", regionName));
             return;
         }
@@ -137,14 +126,14 @@ public class AddCommand extends BaseCommand {
         NClaim.inst().getNconfig().setBlacklistedRegions(blacklistedRegions);
         NClaim.inst().getNconfig().save();
 
-        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.add.region_added_to_blacklist")
+        Msg.send(player, NClaim.inst().getLangManager().getString("command.add.region_added_to_blacklist")
                 .replace("{region}", regionName));
     }
 
 
-    private void handleBlockValueAdd(Player player, String[] args) {
+    private void handleBlockValueAdd(CommandSender player, String[] args) {
         if (args.length < 4) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
             return;
         }
         try {
@@ -152,7 +141,7 @@ public class AddCommand extends BaseCommand {
             int value = Integer.parseInt(args[3]);
 
             if (value <= 0) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.invalid_value"));
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.invalid_value"));
                 return;
             }
 
@@ -160,31 +149,31 @@ public class AddCommand extends BaseCommand {
             try {
                 material = Material.valueOf(materialName);
             } catch (IllegalArgumentException e) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.invalid_material")
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.invalid_material")
                         .replace("{material}", materialName));
                 return;
             }
 
             if (NClaim.inst().getBlockValueManager().isValidBlock(material)) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.add.block_already_exists")
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.add.block_already_exists")
                         .replace("{block}", material.name()));
                 return;
             }
 
             if (!materialName.endsWith("_BLOCK") && !materialName.contains("ORE")) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.invalid_block_type")
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.invalid_block_type")
                         .replace("{material}", materialName));
                 return;
             }
 
             NClaim.inst().getBlockValueManager().setBlockValue(material, value);
 
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.add.block_value_added")
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.add.block_value_added")
                     .replace("{block}", material.name())
                     .replace("{value}", String.valueOf(value)));
 
         } catch (NumberFormatException e) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.enter_a_valid_number"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.enter_a_valid_number"));
         }
     }
 
@@ -192,7 +181,7 @@ public class AddCommand extends BaseCommand {
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
-        if (!(sender instanceof Player) || !sender.hasPermission("nclaim.add") || !sender.hasPermission("nclaim.admin")) {
+        if (!sender.hasPermission("nclaim.add") || !sender.hasPermission("nclaim.admin")) {
             return null;
         }
 

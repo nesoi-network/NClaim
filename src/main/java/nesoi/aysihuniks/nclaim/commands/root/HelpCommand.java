@@ -6,22 +6,22 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.util.HexUtil;
-import org.nandayo.dapi.message.ChannelType;
+import nesoi.aysihuniks.nclaim.utils.Text;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 
 public class HelpCommand extends BaseCommand {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (!(sender instanceof Player)) {
-            ChannelType.CHAT.send(sender, NClaim.inst().getLangManager().getString("command.must_be_player"));
+            Msg.send(sender, NClaim.inst().getLangManager().getString("command.must_be_player"));
             return true;
         }
 
         Player player = (Player) sender;
 
         if (!player.hasPermission("nclaim.help") && !player.hasPermission("nclaim.use")) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
             return true;
         }
 
@@ -32,13 +32,16 @@ public class HelpCommand extends BaseCommand {
             " {YELLOW}/nclaim about {GRAY}- {WHITE}Show information about this plugin.",
             " {YELLOW}/nclaim admin {GRAY}- {WHITE}Show all admin commands.",
             " {YELLOW}/nclaim level {GRAY}- {WHITE}Show the level of the claim.",
+            " {YELLOW}/nclaim list {GRAY}- {WHITE}List your claims.",
+            " {YELLOW}/nclaim name <claim|here> <name|off> {GRAY}- {WHITE}Rename a claim (off = reset).",
+            " {YELLOW}/nclaim border {GRAY}- {WHITE}Toggle the particle outline of the claim you are in.",
             " {YELLOW}/nclaim help/? {GRAY}- {WHITE}Send this help messages.",
             " {YELLOW}/nclaim {GRAY}- {WHITE}Open the Claim menu.",
             ""
         };
 
         for (String line : helpMessage) {
-            ChannelType.CHAT.send(player, HexUtil.parse(line));
+            Msg.send(player, Text.legacy(line));
         }
 
         return true;

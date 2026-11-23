@@ -1,15 +1,17 @@
 name: NClaim
-version: ${project.version}
+version: "@version@"
 main: nesoi.aysihuniks.nclaim.NClaim
-api-version: '1.16'
+api-version: '1.21'
+folia-supported: true
+libraries:
+  - com.zaxxer:HikariCP:7.0.2
 authors: [ aysihuniks, yoshii01 ]
 description: Advanced Chunk Claim System
-depend: [PlaceholderAPI]
-softdepend: [Vault, DecentHolograms, FancyHolograms, SkinRestorer, WorldGuard, AxSellwands]
+softdepend: [PlaceholderAPI, Vault, SkinsRestorer, WorldGuard, AxSellwands]
 commands:
   nclaim:
     aliases: [ nc, claim ]
-    usage: "/nclaim <help/?>"
+    usage: "/nclaim <help|?>"
 permissions:
   nclaim.admin:
     default: false
@@ -40,6 +42,7 @@ permissions:
       nclaim.bypass.place: true
       nclaim.bypass.axsellwand: true
       nclaim.bypass.buy_cooldown: true
+      nclaim.bypass.claim_nearby_others: true
   nclaim.use:
     default: true
     children:
@@ -97,4 +100,6 @@ permissions:
   nclaim.bypass.buy_cooldown:
     default: false
   nclaim.maxclaim:
+    default: false
+  nclaim.bypass.claim_nearby_others:
     default: false

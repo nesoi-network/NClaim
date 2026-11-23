@@ -9,7 +9,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.message.ChannelType;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -20,20 +20,15 @@ public class RemoveCommand extends BaseCommand {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
-        if (!(sender instanceof Player)) {
-            ChannelType.CHAT.send(sender, NClaim.inst().getLangManager().getString("command.must_be_player"));
-            return true;
-        }
-
-        Player player = (Player) sender;
+        CommandSender player = sender; // console allowed: these commands never need a location
 
         if (!player.hasPermission("nclaim.remove") && !player.hasPermission("nclaim.admin")) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
             return true;
         }
 
         if (args.length < 3) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
             return true;
         }
 
@@ -51,16 +46,16 @@ public class RemoveCommand extends BaseCommand {
                 handleBlockValueRemove(player, args);
                 break;
             default:
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
                 break;
         }
 
         return true;
     }
 
-    private void handleBalanceRemove(Player player, String[] args) {
+    private void handleBalanceRemove(CommandSender player, String[] args) {
         if (args.length < 4) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
             return;
         }
 
@@ -70,34 +65,29 @@ public class RemoveCommand extends BaseCommand {
             Player targetPlayer = NClaim.inst().getServer().getPlayer(targetName);
 
             if (targetPlayer == null) {
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.player.not_found").replace("{target}", targetName));
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.player.not_found").replace("{target}", targetName));
                 return;
             }
 
-            User user = User.getUser(targetPlayer.getUniqueId());
-
-            if (NClaim.inst().getBalanceSystem() == Balance.VAULT) {
-                double currentValue = NClaim.inst().getEconomy().getBalance(targetPlayer);
-                double withdrawAmount = Math.min(currentValue, amount);
-                NClaim.inst().getEconomy().withdrawPlayer(targetPlayer, withdrawAmount);
-                double newBalance = NClaim.inst().getEconomy().getBalance(targetPlayer);
-
-                ChannelType.CHAT.send(targetPlayer, NClaim.inst().getLangManager().getString("command.remove.target_removed").replace("{amount}", String.valueOf(withdrawAmount)).replace("{balance}", String.valueOf(newBalance)));
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.remove.player_removed").replace("{amount}", String.valueOf(withdrawAmount)).replace("{target}", targetName));
-            } else {
-                user.setBalance(Math.max(0, user.getBalance() - amount));
-                ChannelType.CHAT.send(targetPlayer, NClaim.inst().getLangManager().getString("command.remove.target_removed").replace("{amount}", String.valueOf(amount)).replace("{balance}", String.valueOf(user.getBalance())));
-                ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.remove.player_removed").replace("{amount}", String.valueOf(amount)).replace("{target}", targetName));
+            if (amount <= 0) {
+                Msg.send(player, NClaim.inst().getLangManager().getString("command.enter_a_valid_number"));
+                return;
             }
+            var economy = NClaim.inst().getEconomyService();
+            double withdrawAmount = Math.min(economy.balance(targetPlayer), amount);
+            economy.withdraw(targetPlayer, withdrawAmount);
+            String balance = nesoi.aysihuniks.nclaim.service.EconomyService.format(economy.balance(targetPlayer));
+            Msg.send(targetPlayer, NClaim.inst().getLangManager().getString("command.remove.target_removed").replace("{amount}", nesoi.aysihuniks.nclaim.utils.Numbers.full(withdrawAmount)).replace("{balance}", balance));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.remove.player_removed").replace("{amount}", nesoi.aysihuniks.nclaim.utils.Numbers.full(withdrawAmount)).replace("{target}", targetName));
         } catch (NumberFormatException e) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.enter_a_valid_number"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.enter_a_valid_number"));
         }
     }
 
-    private void handleBlacklistedWorldRemove(Player player, String worldName) {
-        List<String> blacklistedWorlds = NClaim.inst().getNconfig().getBlacklistedWorlds();
+    private void handleBlacklistedWorldRemove(CommandSender player, String worldName) {
+        List<String> blacklistedWorlds = new java.util.ArrayList<>(NClaim.inst().getNconfig().getBlacklistedWorlds());
         if (!blacklistedWorlds.contains(worldName)) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.remove.not_in_blacklist").replace("{world}", worldName));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.remove.not_in_blacklist").replace("{world}", worldName));
             return;
         }
 
@@ -105,15 +95,15 @@ public class RemoveCommand extends BaseCommand {
         NClaim.inst().getNconfig().setBlacklistedWorlds(blacklistedWorlds);
         NClaim.inst().getNconfig().save();
 
-        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.remove.world_removed_from_blacklist").replace("{world}", worldName));
+        Msg.send(player, NClaim.inst().getLangManager().getString("command.remove.world_removed_from_blacklist").replace("{world}", worldName));
     }
 
-    private void handleBlacklistedRegionRemove(Player player, String regionName) {
+    private void handleBlacklistedRegionRemove(CommandSender player, String regionName) {
         if (!NClaim.inst().isWorldGuardEnabled()) return;
 
-        List<String> blacklistedRegions = NClaim.inst().getNconfig().getBlacklistedRegions();
+        List<String> blacklistedRegions = new java.util.ArrayList<>(NClaim.inst().getNconfig().getBlacklistedRegions());
         if (!blacklistedRegions.contains(regionName)) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.remove.region_not_in_blacklist")
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.remove.region_not_in_blacklist")
                     .replace("{region}", regionName));
             return;
         }
@@ -122,13 +112,13 @@ public class RemoveCommand extends BaseCommand {
         NClaim.inst().getNconfig().setBlacklistedRegions(blacklistedRegions);
         NClaim.inst().getNconfig().save();
 
-        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.remove.region_removed_from_blacklist")
+        Msg.send(player, NClaim.inst().getLangManager().getString("command.remove.region_removed_from_blacklist")
                 .replace("{region}", regionName));
     }
 
-    private void handleBlockValueRemove(Player player, String[] args) {
+    private void handleBlockValueRemove(CommandSender player, String[] args) {
         if (args.length < 3) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.wrong_usage"));
             return;
         }
 
@@ -137,25 +127,25 @@ public class RemoveCommand extends BaseCommand {
         try {
             material = Material.valueOf(materialName);
         } catch (IllegalArgumentException e) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.invalid_material")
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.invalid_material")
                     .replace("{material}", materialName));
             return;
         }
 
         if (!NClaim.inst().getBlockValueManager().isValidBlock(material)) {
-            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.remove.block_not_found")
+            Msg.send(player, NClaim.inst().getLangManager().getString("command.remove.block_not_found")
                     .replace("{block}", material.name()));
             return;
         }
 
         NClaim.inst().getBlockValueManager().removeBlockValue(material);
-        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.remove.block_value_removed")
+        Msg.send(player, NClaim.inst().getLangManager().getString("command.remove.block_value_removed")
                 .replace("{block}", material.name()));
     }
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
-        if (!(sender instanceof Player) || (!sender.hasPermission("nclaim.remove") && !sender.hasPermission("nclaim.admin"))) {
+        if ((!sender.hasPermission("nclaim.remove") && !sender.hasPermission("nclaim.admin"))) {
             return null;
         }
 
