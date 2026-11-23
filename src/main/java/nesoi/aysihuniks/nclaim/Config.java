@@ -1,50 +1,60 @@
 package nesoi.aysihuniks.nclaim;
 
 import lombok.Getter;
-import lombok.Setter;
 import nesoi.aysihuniks.nclaim.model.TimeLeftThreshold;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.PermissionAttachmentInfo;
-import org.nandayo.dapi.util.Util;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
+/** Typed view of config.yml. Values are re-read on every {@link #load()} (reload). */
 @Getter
-@Setter
 public class Config {
 
-    private final NClaim plugin;
-    private static FileConfiguration config;
+    /** Hard upper bound on chunks per claim (the land expansion menu shows an 11x11 grid minus corners). */
+    public static final int ABSOLUTE_MAX_CHUNKS = 117;
 
-    public Config(NClaim plugin) {
-        this.plugin = plugin;
-    }
+    private final NClaim plugin;
+    private YamlConfiguration config;
 
     private String defaultLanguage;
+    private boolean checkForUpdates;
     private double claimBuyPrice;
     private double eachLandBuyPrice;
     private boolean enableTieredPricing;
+    private int maxClaimChunks;
     private int claimExpiryDays;
-    private int maxCoopPlayers;
-    private int maxClaimCount;
+    private int defaultMaxClaims;
+    private int defaultMaxCoop;
     private long lastClaimTime;
-    private List<String> blacklistedWorlds;
-    private List<String> blacklistedRegions;
+    private List<String> blacklistedWorlds = List.of();
+    private List<String> blacklistedRegions = List.of();
     private int claimDistanceChunks;
     private boolean claimDistanceCoopBypass;
     private boolean sellEnabled;
     private int autoSave;
+    private String defaultClaimName;
+    @lombok.Getter(lombok.AccessLevel.NONE)
+    private List<NameRule> nameBlacklist = List.of();
 
     private boolean showHologramTitle;
     private boolean showHologramOwner;
@@ -84,379 +94,419 @@ public class Config {
     private String webhookEmbedImage;
     private String webhookEmbedThumbnail;
     private String webhookMention;
-    
 
     private Material defaultClaimBlockType = Material.OBSIDIAN;
+    private List<TimeLeftThreshold> timeLeftThresholds = List.of();
 
-    public FileConfiguration get() {
+    public Config(@NotNull NClaim plugin) {
+        this.plugin = plugin;
+    }
+
+    public YamlConfiguration get() {
         return config;
     }
-    private List<TimeLeftThreshold> timeLeftThresholds = new java.util.ArrayList<>();
+
+    private File file() {
+        return new File(plugin.getDataFolder(), "config.yml");
+    }
 
     public Config load() {
-        File file = new File(plugin.getDataFolder(), "config.yml");
-        if (!file.exists()) {
-            plugin.saveResource("config.yml", false);
+        File file = file();
+        if (!file.exists()) plugin.saveResource("config.yml", false);
+        YamlConfiguration c = YamlConfiguration.loadConfiguration(file);
+        this.config = c;
+
+        defaultLanguage = c.getString("lang_file", "en-US");
+        checkForUpdates = c.getBoolean("check_for_updates", true);
+        blacklistedWorlds = List.copyOf(c.getStringList("blacklisted_worlds"));
+        blacklistedRegions = List.copyOf(c.getStringList("blacklisted_regions"));
+        claimDistanceChunks = Math.max(0, c.getInt("claim_distance.chunks", 1));
+        claimDistanceCoopBypass = c.getBoolean("claim_distance.bypass_coop_players", true);
+
+        defaultMaxClaims = c.getInt("claim_settings.max_count", 3);
+        claimBuyPrice = Math.max(0, c.getDouble("claim_settings.buy_price", 1500));
+        eachLandBuyPrice = Math.max(0, c.getDouble("claim_settings.expand_price", 2000));
+        enableTieredPricing = c.getBoolean("claim_settings.tiered_pricing.enable", false);
+        maxClaimChunks = clamp(c.getInt("claim_settings.max_chunks", ABSOLUTE_MAX_CHUNKS), 1, ABSOLUTE_MAX_CHUNKS);
+        defaultMaxCoop = c.getInt("claim_settings.max_coop_count.default", 3);
+        claimExpiryDays = Math.max(1, c.getInt("claim_settings.expiry_days", 7));
+        lastClaimTime = Math.max(0, c.getLong("claim_settings.last_claim_time", 5));
+        sellEnabled = c.getBoolean("claim_settings.sell", true);
+        defaultClaimName = c.getString("claim_settings.default_name", "");
+        nesoi.aysihuniks.nclaim.utils.Numbers.configure(
+                !"full".equalsIgnoreCase(c.getString("number_format.style", "compact")),
+                c.getStringList("number_format.suffixes"));
+        List<String> blacklist = new ArrayList<>(readBlacklistFile());
+        blacklist.addAll(c.getStringList("claim_settings.name_blacklist"));
+        nameBlacklist = compileBlacklist(blacklist);
+
+        showHologramTitle = c.getBoolean("hologram_settings.show_title", true);
+        showHologramOwner = c.getBoolean("hologram_settings.show_owner", true);
+        showHologramTimeLeft = c.getBoolean("hologram_settings.show_time_left", true);
+        showHologramCoopCount = c.getBoolean("hologram_settings.show_coop_count", true);
+        showHologramTotalSize = c.getBoolean("hologram_settings.show_total_size", true);
+        showHologramEdit = c.getBoolean("hologram_settings.show_edit", true);
+
+        timeExtensionPricePerMinute = c.getDouble("time_extension.price_per_minute", 10);
+        timeExtensionPricePerHour = c.getDouble("time_extension.price_per_hour", 500);
+        timeExtensionPricePerDay = c.getDouble("time_extension.price_per_day", 10000);
+        timeExtensionTaxRate = c.getDouble("time_extension.tax_rate", 0.1);
+
+        autoSave = Math.max(1, c.getInt("auto_save", 30));
+
+        databaseEnabled = c.getBoolean("database.enable", false);
+        databaseType = c.getString("database.type", "sqlite");
+        sqliteFile = c.getString("database.sqlite.file", "database.db");
+        mysqlHost = c.getString("database.mysql.host", "localhost");
+        mysqlPort = c.getInt("database.mysql.port", 3306);
+        mysqlDatabase = c.getString("database.mysql.database", "nclaim");
+        mysqlUser = c.getString("database.mysql.user", "root");
+        mysqlPassword = c.getString("database.mysql.password", "");
+        maximumPoolSize = c.getInt("database.mysql.maximum_pool_size", 10);
+        minimumIdle = c.getInt("database.mysql.minimum_idle", 5);
+        idleTimeout = c.getLong("database.mysql.idle_timeout", 300000);
+        maxLifetime = c.getLong("database.mysql.max_lifetime", 1800000);
+        connectionTimeout = c.getLong("database.mysql.connection_timeout", 30000);
+
+        webhookEnabled = c.getBoolean("webhook_settings.enabled", false);
+        webhookUrl = c.getString("webhook_settings.url", "");
+        webhookUseEmbed = c.getBoolean("webhook_settings.use_embed", false);
+        webhookContent = c.getString("webhook_settings.content", "");
+        webhookEmbedTitle = c.getString("webhook_settings.embed.title", "");
+        webhookEmbedDescription = c.getString("webhook_settings.embed.description", "");
+        webhookEmbedColor = c.getString("webhook_settings.embed.color", "#FF0000");
+        webhookEmbedFooter = c.getString("webhook_settings.embed.footer", "");
+        webhookEmbedTimestamp = c.getBoolean("webhook_settings.embed.timestamp", true);
+        webhookEmbedImage = c.getString("webhook_settings.embed.image", "");
+        webhookEmbedThumbnail = c.getString("webhook_settings.embed.thumbnail", "");
+        webhookMention = c.getString("webhook_settings.mention", "");
+
+        Material block = Material.matchMaterial(c.getString("claim_settings.default_claim_block_type", "OBSIDIAN"));
+        if (block == null || !block.isBlock() || !block.isSolid()) {
+            Msg.log("&cclaim_settings.default_claim_block_type is not a solid block, using OBSIDIAN.");
+            block = Material.OBSIDIAN;
         }
-        config = YamlConfiguration.loadConfiguration(file);
-
-        setDefaultLanguage(config.getString("lang_file", "en-US"));
-        setBlacklistedWorlds(config.getStringList("blacklisted_worlds"));
-        setBlacklistedRegions(config.getStringList("blacklisted_regions"));
-        setClaimDistanceChunks(config.getInt("claim_distance.chunks", 1));
-        setClaimDistanceCoopBypass(config.getBoolean("claim_distance.bypass_coop_players", true));
-
-        setMaxClaimCount(config.getInt("claim_settings.max_count", 3));
-        setClaimBuyPrice(config.getDouble("claim_settings.buy_price", 1500));
-        setEachLandBuyPrice(config.getDouble("claim_settings.expand_price", 2000));
-        setEnableTieredPricing(config.getBoolean("claim_settings.tiered_pricing.enable", false));
-        setMaxCoopPlayers(config.getInt("claim_settings.max_coop.default", 3));
-        setClaimExpiryDays(config.getInt("claim_settings.expiry_days", 7));
-        setLastClaimTime(config.getLong("claim_settings.last_claim_time", 5));
-        setSellEnabled(config.getBoolean("claim_settings.sell", true));
-
-        setShowHologramTitle(config.getBoolean("hologram_settings.show_title", true));
-        setShowHologramOwner(config.getBoolean("hologram_settings.show_owner", true));
-        setShowHologramTimeLeft(config.getBoolean("hologram_settings.show_time_left", true));
-        setShowHologramCoopCount(config.getBoolean("hologram_settings.show_coop_count", true));
-        setShowHologramTotalSize(config.getBoolean("hologram_settings.show_total_size", true));
-        setShowHologramEdit(config.getBoolean("hologram_settings.show_edit", true));
-
-        setTimeExtensionPricePerMinute(config.getDouble("time_extension.price_per_minute", 10));
-        setTimeExtensionPricePerHour(config.getDouble("time_extension.price_per_hour", 500));
-        setTimeExtensionPricePerDay(config.getDouble("time_extension.price_per_day", 10000));
-        setTimeExtensionTaxRate(config.getDouble("time_extension.tax_rate", 0.1));
-
-        setAutoSave(config.getInt("auto_save", 30));
-
-        setDatabaseEnabled(config.getBoolean("database.enable", false));
-        setDatabaseType(config.getString("database.type", "sqlite"));
-        setSqliteFile(config.getString("database.sqlite.file", "database.db"));
-        setMysqlHost(config.getString("database.mysql.host", "localhost"));
-        setMysqlPort(config.getInt("database.mysql.port", 3306));
-        setMysqlDatabase(config.getString("database.mysql.database", "nclaim"));
-        setMysqlUser(config.getString("database.mysql.user", "root"));
-        setMysqlPassword(config.getString("database.mysql.password", ""));
-        setMaximumPoolSize(config.getInt("database.mysql.maximum_pool_size", 10));
-        setMinimumIdle(config.getInt("database.mysql.minimum_idle", 5));
-        setIdleTimeout(config.getLong("database.mysql.idle_timeout", 300000));
-        setMaxLifetime(config.getLong("database.mysql.max_lifetime", 1800000));
-        setConnectionTimeout(config.getLong("database.mysql.connection_timeout", 30000));
-
-        setWebhookEnabled(config.getBoolean("webhook_settings.enabled", false));
-        setWebhookUrl(config.getString("webhook_settings.url", ""));
-        setWebhookUseEmbed(config.getBoolean("webhook_settings.use_embed", false));
-        setWebhookContent(config.getString("webhook_settings.content", ""));
-
-        if (config.isConfigurationSection("webhook_settings.embed")) {
-            ConfigurationSection embedSection = config.getConfigurationSection("webhook_settings.embed");
-            setWebhookEmbedTitle(embedSection.getString("title", "")); // Empty string for no title
-            setWebhookEmbedDescription(embedSection.getString("description", ""));
-            setWebhookEmbedColor(embedSection.getString("color", "#FF0000"));
-            setWebhookEmbedFooter(embedSection.getString("footer", ""));
-            setWebhookEmbedTimestamp(embedSection.getBoolean("timestamp", true));
-            setWebhookEmbedImage(embedSection.getString("image", ""));
-            setWebhookEmbedThumbnail(embedSection.getString("thumbnail", ""));
-        }
-
-        setWebhookMention(config.getString("webhook_settings.mention", ""));
-
-        String defClaimBlockStr = config.getString("claim_settings.default_claim_block_type", "OBSIDIAN");
-        try {
-            setDefaultClaimBlockType(Material.valueOf(defClaimBlockStr.toUpperCase()));
-        } catch (Exception e) {
-            setDefaultClaimBlockType(Material.OBSIDIAN);
-            Util.log("&cThe default_claim_block_type in Config is invalid! It has been set to OBSIDIAN.");
-        }
+        defaultClaimBlockType = block;
 
         validateTierConfiguration();
-        loadTimeLeftThresholds();
-        loadSounds();
-
+        timeLeftThresholds = parseThresholds();
         return this;
     }
 
-    private void loadSounds() {
-        setIfNotExists("sounds.confirm", "BLOCK_NOTE_BLOCK_CHIME");
-        setIfNotExists("sounds.fail", "ENTITY_ENDERMAN_TELEPORT");
-        setIfNotExists("sounds.warn", "BLOCK_NOTE_BLOCK_BASS");
-        setIfNotExists("sounds.value_increase", "UI_BUTTON_CLICK");
-        setIfNotExists("sounds.value_decrease", "UI_BUTTON_CLICK");
-        setIfNotExists("sounds.menu_refresh", "BLOCK_PISTON_CONTRACT");
-        setIfNotExists("sounds.menu_back", "ITEM_BUNDLE_DROP_CONTENTS");
-        setIfNotExists("sounds.menu_click", "UI_BUTTON_CLICK");
-        setIfNotExists("sounds.search_open", "UI_CARTOGRAPHY_TABLE_TAKE_RESULT");
-        setIfNotExists("sounds.menu_forward", "BLOCK_ENCHANTMENT_TABLE_USE");
-        setIfNotExists("sounds.teleport", "BLOCK_ENCHANTMENT_TABLE_USE");
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
-    private void setIfNotExists(String path, String value) {
-        if (!config.contains(path)) {
-            config.set(path, value);
+    /* ---------------- names (issue #13) ---------------- */
+
+    /** Words shorter than this only match as a whole word, so "amk" does not hit "adam kadar". */
+    private static final int SQUASH_MIN_LENGTH = 5;
+
+    /**
+     * One compiled blacklist entry. Entries are case-insensitive:
+     * <ul>
+     *   <li>Words of 5+ letters match at a word start, also when the name hides them with
+     *       separators or look-alike characters ("N.1.g.g-3.r" matches "nigger").</li>
+     *   <li>Shorter words match only as a whole word (look-alikes still count).</li>
+     *   <li>{@code regex:...} entries are matched against the name as typed.</li>
+     * </ul>
+     */
+    private record NameRule(@Nullable Pattern pattern, @Nullable String squashedWord) {
+        boolean matches(String plain, String words, Squashed squashed) {
+            if (squashedWord != null) return squashed.containsAtWordStart(squashedWord);
+            // regex: entries see the name as typed; short words see the look-alike-mapped text
+            return pattern.matcher(pattern.pattern().startsWith(WHOLE_WORD) ? words : plain).find();
         }
     }
 
-    public synchronized void save() {
-        try {
-            config.set("lang_file", getDefaultLanguage());
-            config.set("blacklisted_worlds", getBlacklistedWorlds());
-            config.set("blacklisted_regions", getBlacklistedRegions());
-
-            config.set("claim_settings.max_count", getMaxClaimCount());
-            config.set("claim_settings.buy_price", getClaimBuyPrice());
-            config.set("claim_settings.expand_price", getEachLandBuyPrice());
-            config.set("claim_settings.max_coop.default", getMaxCoopPlayers());
-            config.set("claim_settings.expiry_days", getClaimExpiryDays());
-            config.set("claim_settings.last_claim_time", getLastClaimTime());
-            config.set("claim_settings.sell", isSellEnabled());
-
-            config.set("hologram_settings.show_title", isShowHologramTitle());
-            config.set("hologram_settings.show_owner", isShowHologramOwner());
-            config.set("hologram_settings.show_time_left", isShowHologramTimeLeft());
-            config.set("hologram_settings.show_coop_count", isShowHologramCoopCount());
-            config.set("hologram_settings.show_total_size", isShowHologramTotalSize());
-            config.set("hologram_settings.show_edit", isShowHologramEdit());
-
-            config.set("claim_settings.tiered_pricing.enable", isEnableTieredPricing());
-
-            config.set("time_extension.price_per_minute", getTimeExtensionPricePerMinute());
-            config.set("time_extension.price_per_hour", getTimeExtensionPricePerHour());
-            config.set("time_extension.price_per_day", getTimeExtensionPricePerDay());
-            config.set("time_extension.tax_rate", getTimeExtensionTaxRate());
-
-            config.set("auto_save", getAutoSave());
-
-            config.set("database.enable", isDatabaseEnabled());
-            config.set("database.type", getDatabaseType());
-            config.set("database.sqlite.file", getSqliteFile());
-            config.set("database.mysql.host", getMysqlHost());
-            config.set("database.mysql.port", getMysqlPort());
-            config.set("database.mysql.database", getMysqlDatabase());
-            config.set("database.mysql.user", getMysqlUser());
-            config.set("database.mysql.password", getMysqlPassword());
-            config.set("database.mysql.maximum_pool_size", getMaximumPoolSize());
-            config.set("database.mysql.minimum_idle", getMinimumIdle());
-            config.set("database.mysql.idle_timeout", getIdleTimeout());
-            config.set("database.mysql.max_lifetime", getMaxLifetime());
-            config.set("database.mysql.connection_timeout", getConnectionTimeout());
-
-            config.set("webhook_settings.enabled", isWebhookEnabled());
-            config.set("webhook_settings.url", getWebhookUrl());
-            config.set("webhook_settings.use_embed", isWebhookUseEmbed());
-            config.set("webhook_settings.content", getWebhookContent());
-
-            ConfigurationSection embedSection = config.createSection("webhook_settings.embed");
-            embedSection.set("title", getWebhookEmbedTitle());
-            embedSection.set("description", getWebhookEmbedDescription());
-            embedSection.set("color", getWebhookEmbedColor());
-            embedSection.set("footer", getWebhookEmbedFooter());
-            embedSection.set("timestamp", isWebhookEmbedTimestamp());
-            embedSection.set("image", getWebhookEmbedImage());
-            embedSection.set("thumbnail", getWebhookEmbedThumbnail());
-
-            config.set("webhook_settings.mention", getWebhookMention());
-
-            config.set("claim_settings.default_claim_block_type", getDefaultClaimBlockType().name());
-
-            config.save(new File(plugin.getDataFolder(), "config.yml"));
-        } catch (Exception e) {
-            Util.log("&cFailed to save config.yml! " + e.getMessage());
-        }
-    }
-
-    public void loadTimeLeftThresholds() {
-        timeLeftThresholds.clear();
-        if (config.isList("hologram_settings.time_left_thresholds")) {
-            List<?> rawList = config.getList("hologram_settings.time_left_thresholds", new ArrayList<>());
-            for (Object obj : rawList) {
-                if (!(obj instanceof java.util.Map)) continue;
-                java.util.Map<?, ?> map = (java.util.Map<?, ?>) obj;
-                String thresholdStr = String.valueOf(map.get("threshold"));
-                String color = String.valueOf(map.get("color"));
-                String[] parts = thresholdStr.split(" ");
-                if (parts.length != 3) continue;
-                TimeLeftThreshold t = new TimeLeftThreshold();
-                t.unit = parts[0].trim();
-                t.operator = parts[1].trim();
-                t.value = Integer.parseInt(parts[2].trim());
-                t.color = color;
-                timeLeftThresholds.add(t);
+    /**
+     * The name's letters only, remembering which letters began a word. A long blacklisted word must
+     * start at a word start: "n.i.g.g.e.r" and "orospular" are caught, but "Basement" (semen) or
+     * "Therapist" (rapist) are not.
+     */
+    private record Squashed(String letters, boolean[] wordStart) {
+        static Squashed of(String words) {
+            StringBuilder letters = new StringBuilder(words.length());
+            boolean[] starts = new boolean[words.length()];
+            boolean previousLetter = false;
+            for (char c : words.toCharArray()) {
+                boolean letter = c >= 'a' && c <= 'z';
+                if (letter) {
+                    starts[letters.length()] = !previousLetter;
+                    letters.append(c);
+                }
+                previousLetter = letter;
             }
+            return new Squashed(letters.toString(), starts);
+        }
+
+        boolean containsAtWordStart(String word) {
+            for (int i = letters.indexOf(word); i >= 0; i = letters.indexOf(word, i + 1)) {
+                if (wordStart[i]) return true;
+            }
+            return false;
         }
     }
 
-    public static long getTimeUnitValue(long seconds, String unit) {
-        switch (unit) {
-            case "day": return seconds / 86400;
-            case "hour": return seconds / 3600;
-            case "minute": return seconds / 60;
-            default: return seconds;
+    private static final String WHOLE_WORD = "(?<![a-z])";
+
+    private static final String BLACKLIST_FILE = "name_blacklist.txt";
+
+    /**
+     * Reads {@value #BLACKLIST_FILE}: one entry per line, {@code #} starts a comment. The file is
+     * written on first start and never overwritten, so server owners can edit it freely.
+     */
+    private List<String> readBlacklistFile() {
+        File file = new File(plugin.getDataFolder(), BLACKLIST_FILE);
+        if (!file.exists() && plugin.getResource(BLACKLIST_FILE) != null) plugin.saveResource(BLACKLIST_FILE, false);
+        if (!file.exists()) return List.of();
+        try {
+            List<String> entries = new ArrayList<>();
+            for (String line : java.nio.file.Files.readAllLines(file.toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
+                String entry = line.strip();
+                if (!entry.isEmpty() && !entry.startsWith("#")) entries.add(entry);
+            }
+            return entries;
+        } catch (java.io.IOException e) {
+            Msg.log("&cCould not read " + BLACKLIST_FILE + ": " + e.getMessage());
+            return List.of();
         }
     }
 
-    public double getTieredPrice(int chunkNumber) {
-        if (chunkNumber > 117) {
-            return -1;
-        }
-
-        if (!isEnableTieredPricing()) {
-            return getEachLandBuyPrice();
-        }
-
-        ConfigurationSection tiersSection = config.getConfigurationSection("claim_settings.tiered_pricing.tiers");
-        if (tiersSection != null) {
-            for (String tierKey : tiersSection.getKeys(false)) {
-                int minChunk = config.getInt("claim_settings.tiered_pricing.tiers." + tierKey + ".min", 1);
-                int maxChunk = config.getInt("claim_settings.tiered_pricing.tiers." + tierKey + ".max", 1);
-                double price = config.getDouble("claim_settings.tiered_pricing.tiers." + tierKey + ".price", 0);
-
-                if (minChunk > 117 || maxChunk > 117) {
-                    Util.log("&cWarning: Tier " + tierKey + " has chunk numbers above limit (117). Skipping...");
+    private static List<NameRule> compileBlacklist(List<String> entries) {
+        List<NameRule> rules = new ArrayList<>();
+        for (String entry : entries) {
+            if (entry == null || entry.isBlank()) continue;
+            try {
+                if (entry.startsWith("regex:")) {
+                    rules.add(new NameRule(Pattern.compile(entry.substring(6), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE), null));
                     continue;
                 }
-
-                if (chunkNumber >= minChunk && chunkNumber <= maxChunk) {
-                    return price;
-                }
+                String word = squash(entry);
+                if (word.isEmpty()) continue;
+                rules.add(word.length() >= SQUASH_MIN_LENGTH
+                        ? new NameRule(null, word)
+                        : new NameRule(Pattern.compile(WHOLE_WORD + Pattern.quote(word) + "(?![a-z])"), null));
+            } catch (PatternSyntaxException e) {
+                Msg.log("&cInvalid name_blacklist pattern '" + entry + "': " + e.getDescription());
             }
         }
-
-        return getEachLandBuyPrice();
+        return Collections.unmodifiableList(rules);
     }
 
-    public void validateTierConfiguration() {
-        if (!isEnableTieredPricing()) {
-            return;
+    public boolean isBlacklistedName(@NotNull String name) {
+        String plain = nesoi.aysihuniks.nclaim.utils.Text.plain(name);
+        String words = lookAlikes(plain);
+        Squashed squashed = Squashed.of(words);
+        for (NameRule rule : nameBlacklist) {
+            if (rule.matches(plain, words, squashed)) return true;
         }
-
-        boolean isValid = true;
-
-        ConfigurationSection tiersSection = config.getConfigurationSection("claim_settings.tiered_pricing.tiers");
-        if (tiersSection != null) {
-            for (String tierKey : tiersSection.getKeys(false)) {
-                int minChunk = config.getInt("claim_settings.tiered_pricing.tiers." + tierKey + ".min", 1);
-                int maxChunk = config.getInt("claim_settings.tiered_pricing.tiers." + tierKey + ".max", 1);
-
-                if (minChunk > 117 || maxChunk > 117) {
-                    Util.log("&cError: Tier " + tierKey + " exceeds maximum chunk limit (117)!");
-                    isValid = false;
-                }
-
-                if (minChunk > maxChunk) {
-                    Util.log("&cError: Tier " + tierKey + " has min (" + minChunk + ") greater than max (" + maxChunk + ")!");
-                    isValid = false;
-                }
-
-                if (minChunk < 1) {
-                    Util.log("&cError: Tier " + tierKey + " has min chunk less than 1!");
-                    isValid = false;
-                }
-            }
-        }
-
-        if (!isValid) {
-            Util.log("&cTiered pricing system has configuration errors. Please fix your config.yml!");
-        }
-
+        return false;
     }
 
-    public int getMaxCoopPlayers(Player player) {
-        if (player.isOp() || player.hasPermission("nclaim.bypass.*") || player.hasPermission("nclaim.bypass.max_coop_count")) {
+    /** Lower case, Turkish letters folded and common look-alike characters replaced (1 -> i, 3 -> e, @ -> a ...). */
+    private static String lookAlikes(String input) {
+        StringBuilder out = new StringBuilder(input.length());
+        for (char c : input.toLowerCase(java.util.Locale.ROOT).toCharArray()) {
+            out.append(switch (c) {
+                case 'ı', 'i', 'í', 'ì', 'î', 'ï', '1', '!', '|' -> 'i';
+                case 'ş', '$', '5' -> 's';
+                case 'ğ', '9' -> 'g';
+                case 'ü', 'ú', 'ù', 'û' -> 'u';
+                case 'ö', 'ó', 'ò', 'ô', '0' -> 'o';
+                case 'ç' -> 'c';
+                case 'á', 'à', 'â', 'ä', '@', '4' -> 'a';
+                case 'é', 'è', 'ê', 'ë', '3' -> 'e';
+                case '7' -> 't';
+                default -> c;
+            });
+        }
+        return out.toString();
+    }
+
+    /** {@link #lookAlikes} with everything but letters removed. */
+    private static String squash(String input) {
+        return lookAlikes(input).replaceAll("[^a-z]", "");
+    }
+
+    /** Name given to a new claim when the player did not choose one; {@code null} means "use the claim id". */
+    public String defaultClaimName(@NotNull String playerName, @NotNull String claimId) {
+        if (defaultClaimName == null || defaultClaimName.isBlank()) return null;
+        String name = defaultClaimName.replace("{player}", playerName);
+        return name.length() > 24 ? name.substring(0, 24) : name;
+    }
+
+    /* ---------------- per-player limits ---------------- */
+
+    public int getMaxCoopPlayers(@NotNull Player player) {
+        if (player.hasPermission("nclaim.bypass.*") || player.hasPermission("nclaim.bypass.max_coop_count")) {
             return Integer.MAX_VALUE;
         }
-
-        int maxCoop = config.getInt("claim_settings.max_coop_count.default", 3);
-
-        ConfigurationSection maxCoopSection = config.getConfigurationSection("claim_settings.max_coop_count");
-        if (maxCoopSection != null) {
-            for (String key : maxCoopSection.getKeys(false)) {
+        int max = defaultMaxCoop;
+        ConfigurationSection section = config.getConfigurationSection("claim_settings.max_coop_count");
+        if (section != null) {
+            for (String key : section.getKeys(false)) {
                 if (!key.equals("default") && player.hasPermission("nclaim.maxcoop." + key)) {
-                    int value = config.getInt("claim_settings.max_coop_count." + key);
-                    if (value > maxCoop) {
-                        maxCoop = value;
-                    }
+                    max = Math.max(max, section.getInt(key));
                 }
             }
         }
-
-        return maxCoop;
+        return max;
     }
 
-
-    public int getMaxClaimCount(Player player) {
-        if (player.isOp() || player.hasPermission("nclaim.bypass.*") || player.hasPermission("nclaim.bypass.max_claim_count")) {
+    public int getMaxClaimCount(@NotNull Player player) {
+        if (player.hasPermission("nclaim.bypass.*") || player.hasPermission("nclaim.bypass.max_claim_count")) {
             return Integer.MAX_VALUE;
         }
-
-        int maxClaims = config.getInt("max_claim_count", 3);
-
-        for (PermissionAttachmentInfo permInfo : player.getEffectivePermissions()) {
-            String perm = permInfo.getPermission();
+        int max = defaultMaxClaims;
+        for (PermissionAttachmentInfo info : player.getEffectivePermissions()) {
+            if (!info.getValue()) continue;
+            String perm = info.getPermission();
             if (perm.startsWith("nclaim.maxclaim.")) {
                 try {
-                    int value = Integer.parseInt(perm.substring("nclaim.maxclaim.".length()));
-                    if (value > maxClaims) {
-                        maxClaims = value;
-                    }
+                    max = Math.max(max, Integer.parseInt(perm.substring("nclaim.maxclaim.".length())));
                 } catch (NumberFormatException ignored) {
                 }
             }
         }
+        return max;
+    }
 
-        return maxClaims;
+    /* ---------------- pricing ---------------- */
+
+    /** Price of the {@code chunkNumber}-th chunk of a claim, or {@code -1} above the limit. */
+    public double getTieredPrice(int chunkNumber) {
+        if (chunkNumber > maxClaimChunks) return -1;
+        if (!enableTieredPricing) return eachLandBuyPrice;
+        ConfigurationSection tiers = config.getConfigurationSection("claim_settings.tiered_pricing.tiers");
+        if (tiers != null) {
+            for (String key : tiers.getKeys(false)) {
+                int min = tiers.getInt(key + ".min", 1);
+                int max = tiers.getInt(key + ".max", 1);
+                if (chunkNumber >= min && chunkNumber <= max) return Math.max(0, tiers.getDouble(key + ".price", 0));
+            }
+        }
+        return eachLandBuyPrice;
+    }
+
+    private void validateTierConfiguration() {
+        if (!enableTieredPricing) return;
+        ConfigurationSection tiers = config.getConfigurationSection("claim_settings.tiered_pricing.tiers");
+        if (tiers == null) return;
+        for (String key : tiers.getKeys(false)) {
+            int min = tiers.getInt(key + ".min", 1);
+            int max = tiers.getInt(key + ".max", 1);
+            if (min < 1 || min > max || max > ABSOLUTE_MAX_CHUNKS) {
+                Msg.log("&cTier '" + key + "' is invalid (min=" + min + ", max=" + max + ", limit=" + ABSOLUTE_MAX_CHUNKS + ").");
+            }
+        }
+    }
+
+    /* ---------------- time left colours ---------------- */
+
+    private List<TimeLeftThreshold> parseThresholds() {
+        List<TimeLeftThreshold> out = new ArrayList<>();
+        for (Map<?, ?> map : config.getMapList("hologram_settings.time_left_thresholds")) {
+            String[] parts = String.valueOf(map.get("threshold")).trim().split("\\s+");
+            if (parts.length != 3) continue;
+            try {
+                TimeLeftThreshold t = new TimeLeftThreshold();
+                t.unit = parts[0].toLowerCase(Locale.ROOT);
+                t.operator = parts[1];
+                t.value = Integer.parseInt(parts[2]);
+                t.color = String.valueOf(map.get("color"));
+                out.add(t);
+            } catch (NumberFormatException e) {
+                Msg.log("&cInvalid time_left_threshold: " + map.get("threshold"));
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    public static long getTimeUnitValue(long seconds, String unit) {
+        return switch (unit) {
+            case "day", "days" -> seconds / 86400;
+            case "hour", "hours" -> seconds / 3600;
+            case "minute", "minutes" -> seconds / 60;
+            default -> seconds;
+        };
     }
 
     public boolean isValidLanguage(String lang) {
-        return lang.equals("en-US") || lang.equals("tr-TR") || lang.equals("fr-FR");
+        return new File(plugin.getDataFolder(), "lang/" + lang + ".yml").exists()
+                || plugin.getResource("lang/" + lang + ".yml") != null;
     }
 
-    public Config updateConfig() {
-        File configFile = new File(plugin.getDataFolder(), "config.yml");
-        if (!configFile.exists()) {
-            plugin.saveDefaultConfig();
-            return this;
-        }
+    /* ---------------- writing ---------------- */
 
-        String version = plugin.getDescription().getVersion();
-        String configVersion = config.getString("config_version", "0");
+    public void setBlacklistedWorlds(@NotNull List<String> worlds) {
+        set("blacklisted_worlds", new ArrayList<>(worlds));
+    }
 
-        if (!version.equals(configVersion)) {
-            Util.log("&eNew version detected (" + version + "), updating configuration...");
+    public void setBlacklistedRegions(@NotNull List<String> regions) {
+        set("blacklisted_regions", new ArrayList<>(regions));
+    }
 
-            saveBackupConfig();
+    public void setDefaultLanguage(@NotNull String language) {
+        set("lang_file", language);
+    }
 
-            config.options().copyDefaults(true);
+    /** Changes one value (admin menus / commands) and saves the file off-thread. */
+    public void set(@NotNull String path, Object value) {
+        config.set(path, value);
+        save();
+        load();
+    }
 
-            InputStream defStream = plugin.getResource("config.yml");
-            if (defStream != null) {
-                YamlConfiguration defConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(defStream));
-                config.setDefaults(defConfig);
-            }
-
-            config.set("config_version", version);
+    public void save() {
+        String data = config.saveToString();
+        File file = file();
+        nesoi.aysihuniks.nclaim.utils.Scheduler.async(() -> {
             try {
-                config.save(configFile);
-                Util.log("&aConfiguration successfully updated to version " + version + "!");
+                java.nio.file.Files.writeString(file.toPath(), data, StandardCharsets.UTF_8);
             } catch (IOException e) {
-                Util.log("&cAn error occurred while saving the configuration!");
+                Msg.log("&cFailed to save config.yml: " + e.getMessage());
             }
-        }
-        return this;
+        });
     }
 
-    private void saveBackupConfig() {
-        File backupDir = new File(plugin.getDataFolder(), "backups");
-        if (!backupDir.exists()) {
-            backupDir.mkdirs();
+    /**
+     * Adds keys introduced by a new plugin version without touching existing values.
+     * Runs only when {@code config_version} differs from the plugin version.
+     */
+    public Config updateConfig() {
+        String version = plugin.getPluginMeta().getVersion();
+        if (version.equals(config.getString("config_version"))) return this;
+        InputStream defaults = plugin.getResource("config.yml");
+        if (defaults == null) return this;
+        YamlConfiguration def = YamlConfiguration.loadConfiguration(new InputStreamReader(defaults, StandardCharsets.UTF_8));
+
+        boolean changed = false;
+        for (String key : def.getKeys(true)) {
+            if (def.isConfigurationSection(key) || config.contains(key, true)) continue;
+            config.set(key, def.get(key));
+            config.setComments(key, def.getComments(key));
+            changed = true;
         }
-        String date = new SimpleDateFormat("dd-MM-yyyy-HH-mm-ss").format(new Date());
-        File backupFile = new File(backupDir, "config_" + date + ".yml");
+        if (changed) backup();
+        config.set("config_version", version);
         try {
-            config.save(backupFile);
-            Util.log("&aBacked up old configuration file.");
-        } catch (Exception e) {
-            Util.log("&cFailed to save backup file.");
+            config.save(file());
+            if (changed) Msg.log("&aAdded new settings to config.yml for version " + version + ".");
+        } catch (IOException e) {
+            Msg.log("&cCould not update config.yml: " + e.getMessage());
         }
+        return load();
     }
 
+    private void backup() {
+        File dir = new File(plugin.getDataFolder(), "backups");
+        if (!dir.exists() && !dir.mkdirs()) return;
+        String date = new SimpleDateFormat("dd-MM-yyyy-HH-mm-ss").format(new Date());
+        try {
+            java.nio.file.Files.copy(file().toPath(), new File(dir, "config_" + date + ".yml").toPath());
+        } catch (IOException e) {
+            Msg.log("&cFailed to back up config.yml: " + e.getMessage());
+        }
+    }
 }
