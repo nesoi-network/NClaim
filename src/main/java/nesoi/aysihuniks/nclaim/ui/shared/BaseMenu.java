@@ -9,9 +9,9 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.nandayo.dapi.guimanager.button.SingleSlotButton;
-import org.nandayo.dapi.guimanager.menu.Menu;
-import org.nandayo.dapi.util.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.SingleSlotButton;
+import nesoi.aysihuniks.nclaim.ui.framework.Menu;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
 
 import java.util.List;
 

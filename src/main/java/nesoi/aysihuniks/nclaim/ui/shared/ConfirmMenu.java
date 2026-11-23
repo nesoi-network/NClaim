@@ -7,10 +7,10 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.nandayo.dapi.guimanager.MenuType;
-import org.nandayo.dapi.guimanager.button.SingleSlotButton;
-import org.nandayo.dapi.util.ItemCreator;
-import org.nandayo.dapi.guimanager.button.Button;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
+import nesoi.aysihuniks.nclaim.ui.framework.SingleSlotButton;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
 
 import java.util.List;
 import java.util.Set;
@@ -20,6 +20,8 @@ public class ConfirmMenu extends BaseMenu {
     private final String itemName;
     private final List<String> lore;
     private final Consumer<String> onFinish;
+    /** A confirm menu answers once; extra clicks (double click, lag) are ignored. */
+    private boolean answered;
 
     public ConfirmMenu(Player player, String itemName, List<String> lore, Consumer<String> onFinish) {
         super("confirm_menu");
@@ -75,6 +77,8 @@ public class ConfirmMenu extends BaseMenu {
 
             @Override
             public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
+                if (answered) return;
+                answered = true;
                 onFinish.accept("confirmed");
                 MessageType.CONFIRM.playSound(player);
             }
@@ -98,6 +102,8 @@ public class ConfirmMenu extends BaseMenu {
 
             @Override
             public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
+                if (answered) return;
+                answered = true;
                 onFinish.accept("declined");
                 MessageType.WARN.playSound(player);
             }
