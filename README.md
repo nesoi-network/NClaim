@@ -122,8 +122,8 @@ WorldGuard (region blacklist), SkinsRestorer (head skins), AxSellwands.
 | Placeholder | Description | Version |
 |---|---|---|
 | `%nclaim_player_balance%` | Balance (Vault or NClaim's own) | 1.0 |
-| `%nclaim_claim_count%` / `%nclaim_claim_count_<player>%` | Number of claims the player owns | 4.0 |
-| `%nclaim_coop_count%` / `%nclaim_coop_count_<player>%` | Number of claims the player is a co-op member of | 4.0 |
+| `%nclaim_claim_count%` / `%nclaim_claim_count_<player>%` | Number of claims the player owns | 3.2 |
+| `%nclaim_coop_count%` / `%nclaim_coop_count_<player>%` | Number of claims the player is a co-op member of | 3.2 |
 | `%nclaim_total_value%` | Total value of the player's claims, formatted (`1.5k`) | 4.0 |
 | `%nclaim_total_value_raw%` | Same as a plain number, for leaderboard plugins | 4.0 |
 | `%nclaim_total_chunks%` | Total chunks of the player's claims | 4.0 |
@@ -134,7 +134,7 @@ WorldGuard (region blacklist), SkinsRestorer (head skins), AxSellwands.
 |---|---|---|
 | `%nclaim_owner%` | Owner of the claim | 2.1 |
 | `%nclaim_display_name%` | Name of the claim | 3.3.4 |
-| `%nclaim_expiration%` / `%nclaim_claim_expiry%` | Time left until the claim expires | 1.0 / 4.0 |
+| `%nclaim_expiration%` / `%nclaim_claim_expiry%` | Time left until the claim expires | 1.0 / 3.4.1 |
 | `%nclaim_coop_count%` (with location) | Number of co-op members | 1.0 |
 | `%nclaim_total_size%` | Number of chunks | 1.0 |
 | `%nclaim_claim_main_value%` | Block value of the main chunk | 2.0 |

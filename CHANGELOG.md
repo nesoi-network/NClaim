@@ -43,16 +43,14 @@ After 4.0.0, updates go back to only adding new entries to `guis.yml` and the la
   category without leaving the overview.
 - **Claim borders:** see-through coloured walls instead of particles (green yours, blue co-op, red others,
   yellow free), toggled from the management menu or with `/nclaim border`.
-- **Commands:** `/nclaim border`, `/nclaim name <claim|here> <name|off>` (`off` resets the name),
-  `/nclaim admin reload` (also from the console).
+- **Commands:** `/nclaim border`; `/nclaim admin reload` also works from the console.
 - **Number format:** prices, balances and values are shown as `1.5k`, `20.3k`, `1.25M` (or in full, see
   `number_format` in `config.yml`). No more `2352.3523536436` in holograms.
 - **Name blacklist:** `name_blacklist.txt` blocks offensive claim names, including look-alike spellings.
-- **Admin claim list:** statistics, search, sort, for-sale filter, multi-delete, and an empty state that
+- **Admin claim list:** a statistics overview, and an empty state that
   says what to do when nobody has a claim yet.
-- **Placeholders:** `%nclaim_claim_count%`, `%nclaim_coop_count%`, `%nclaim_claim_expiry%`, `%nclaim_total_value%`,
-  `%nclaim_total_value_raw%` (for leaderboard plugins such as ajLeaderboards), `%nclaim_total_chunks%`; every per-chunk
-  placeholder works without the world/chunk part (uses the chunk the player stands in).
+- **Placeholders:** `%nclaim_total_value%`, `%nclaim_total_value_raw%` (plain number for leaderboard plugins such
+  as ajLeaderboards) and `%nclaim_total_chunks%`. Claim placeholders now also read worlds with `_` in the name.
 - **Permission:** `nclaim.bypass.claim_nearby_others` ignores `claim_distance`.
 - **Database:** turning `database.enable` on with an empty database copies the YAML data into it.
 
