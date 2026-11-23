@@ -11,7 +11,6 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Locale;
 
 /**
  * One entry point for money: Vault when an economy provider exists, otherwise the plugin's own

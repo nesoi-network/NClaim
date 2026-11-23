@@ -2,8 +2,6 @@ package nesoi.aysihuniks.nclaim.commands.root;
 
 import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.commands.BaseCommand;
-import nesoi.aysihuniks.nclaim.enums.Balance;
-import nesoi.aysihuniks.nclaim.model.User;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;

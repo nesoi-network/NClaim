@@ -5,7 +5,6 @@ import nesoi.aysihuniks.nclaim.commands.BaseCommand;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.PluginDescriptionFile;
 import org.jetbrains.annotations.NotNull;
 import nesoi.aysihuniks.nclaim.utils.Text;
 import nesoi.aysihuniks.nclaim.utils.Msg;

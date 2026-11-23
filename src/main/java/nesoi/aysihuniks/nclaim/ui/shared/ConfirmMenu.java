@@ -6,9 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
-import nesoi.aysihuniks.nclaim.ui.framework.SingleSlotButton;
 import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
 import nesoi.aysihuniks.nclaim.ui.framework.Button;
 

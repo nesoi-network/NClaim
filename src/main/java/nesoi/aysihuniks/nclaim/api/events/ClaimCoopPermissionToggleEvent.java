@@ -3,8 +3,6 @@ package nesoi.aysihuniks.nclaim.api.events;
 import lombok.Getter;
 import nesoi.aysihuniks.nclaim.enums.Permission;
 import nesoi.aysihuniks.nclaim.model.Claim;
-import nesoi.aysihuniks.nclaim.model.CoopPermission;
-import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
