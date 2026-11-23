@@ -1,208 +1,137 @@
 package nesoi.aysihuniks.nclaim.service;
 
-import lombok.RequiredArgsConstructor;
 import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.api.events.ClaimCoopAddEvent;
 import nesoi.aysihuniks.nclaim.api.events.ClaimCoopPermissionCategoryToggleEvent;
-import nesoi.aysihuniks.nclaim.api.events.ClaimCoopRemoveEvent;
 import nesoi.aysihuniks.nclaim.api.events.ClaimCoopPermissionToggleEvent;
+import nesoi.aysihuniks.nclaim.api.events.ClaimCoopRemoveEvent;
 import nesoi.aysihuniks.nclaim.enums.Permission;
 import nesoi.aysihuniks.nclaim.enums.PermissionCategory;
 import nesoi.aysihuniks.nclaim.model.Claim;
 import nesoi.aysihuniks.nclaim.model.CoopPermission;
-import nesoi.aysihuniks.nclaim.model.User;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.message.ChannelType;
 
-import java.util.*;
+import java.util.UUID;
 
-@RequiredArgsConstructor
+/** Co-op membership and per-member permissions. */
 public class ClaimCoopManager {
+
     private final NClaim plugin;
 
-    public boolean hasPermission(Player player, Claim claim, Permission permission) {
-        if (player.hasPermission("nclaim.bypass") || isClaimOwner(claim, player)) {
-            return true;
-        }
-        
-        UUID playerUuid = player.getUniqueId();
-        if (!claim.getCoopPlayers().contains(playerUuid)) {
-            return false;
-        }
-        
-        return claim.getCoopPermissions().get(playerUuid).isEnabled(permission);
+    public ClaimCoopManager(@NotNull NClaim plugin) {
+        this.plugin = plugin;
     }
 
-    public void addCoopPlayer(Claim claim, Player owner, Player coopPlayer, boolean isAdmin) {
-        if (!canAddCoop(claim, owner, coopPlayer, isAdmin)) {
-            return;
-        }
-
-        UUID coopUUID = coopPlayer.getUniqueId();
-        ClaimCoopAddEvent addEvent = new ClaimCoopAddEvent(owner, coopPlayer, claim);
-        Bukkit.getPluginManager().callEvent(addEvent);
-
-        if (addEvent.isCancelled()) {
-            ChannelType.CHAT.send(owner, plugin.getLangManager().getString("claim.coop.add_cancelled"));
-            return;
-        }
-
-        addCoopToClaimData(claim, coopUUID);
-
-        if (plugin.getNconfig().isDatabaseEnabled()) {
-            plugin.getDatabaseManager().saveClaim(claim);
-        }
-
-        ChannelType.CHAT.send(owner, plugin.getLangManager().getString("claim.coop.added")
-                .replace("{coop}", coopPlayer.getName()));
-        ChannelType.CHAT.send(coopPlayer, plugin.getLangManager().getString("claim.coop.joined")
-                .replace("{owner}", owner.getName()));
+    /** Owner and admins with the interact bypass may do everything; co-ops need the permission. */
+    public boolean hasPermission(@NotNull Player player, @NotNull Claim claim, @NotNull Permission permission) {
+        if (isClaimOwner(claim, player) || player.hasPermission("nclaim.bypass.*")) return true;
+        UUID uuid = player.getUniqueId();
+        return claim.getCoopPlayers().contains(uuid) && claim.getCoopPermission(uuid).isEnabled(permission);
     }
 
-    public void removeCoopPlayer(Claim claim, Player owner, UUID coopUUID) {
-        if (!isClaimOwner(claim, owner)) {
-            ChannelType.CHAT.send(owner, plugin.getLangManager().getString("command.permission_denied"));
+    public void addCoopPlayer(@NotNull Claim claim, @NotNull Player actor, @NotNull Player coopPlayer, boolean isAdmin) {
+        if (!canAddCoop(claim, actor, coopPlayer, isAdmin)) return;
+
+        ClaimCoopAddEvent event = new ClaimCoopAddEvent(actor, coopPlayer, claim);
+        Bukkit.getPluginManager().callEvent(event);
+        if (event.isCancelled()) {
+            Msg.send(actor, lang("claim.coop.add_cancelled"));
             return;
         }
 
-        ClaimCoopRemoveEvent removeEvent = new ClaimCoopRemoveEvent(owner, coopUUID, claim);
-        Bukkit.getPluginManager().callEvent(removeEvent);
+        claim.addCoop(coopPlayer.getUniqueId());
+        refreshHologram(claim);
+        Msg.send(actor, lang("claim.coop.added").replace("{coop}", coopPlayer.getName()));
+        Msg.send(coopPlayer, lang("claim.coop.joined").replace("{owner}", actor.getName()));
+    }
 
-        if (removeEvent.isCancelled()) {
-            ChannelType.CHAT.send(owner, plugin.getLangManager().getString("claim.coop.remove_cancelled"));
+    public void removeCoopPlayer(@NotNull Claim claim, @NotNull Player actor, @NotNull UUID coopUUID) {
+        if (!isClaimOwner(claim, actor) && !actor.hasPermission("nclaim.admin")) {
+            Msg.send(actor, lang("command.permission_denied"));
             return;
         }
 
-        removeCoopFromClaimData(claim, coopUUID);
-
-        if (plugin.getNconfig().isDatabaseEnabled()) {
-            plugin.getDatabaseManager().saveClaim(claim);
+        ClaimCoopRemoveEvent event = new ClaimCoopRemoveEvent(actor, coopUUID, claim);
+        Bukkit.getPluginManager().callEvent(event);
+        if (event.isCancelled()) {
+            Msg.send(actor, lang("claim.coop.remove_cancelled"));
+            return;
         }
 
+        claim.removeCoop(coopUUID);
+        refreshHologram(claim);
         Player coopPlayer = Bukkit.getPlayer(coopUUID);
-        String coopName = coopPlayer != null ? coopPlayer.getName() : coopUUID.toString();
-        if (coopPlayer != null) {
-            ChannelType.CHAT.send(coopPlayer, plugin.getLangManager().getString("claim.coop.kicked")
-                    .replace("{owner}", owner.getName()));
-        }
-        ChannelType.CHAT.send(owner, plugin.getLangManager().getString("claim.coop.removed")
-                .replace("{coop}", coopName));
+        String coopName = coopPlayer != null ? coopPlayer.getName() : String.valueOf(Bukkit.getOfflinePlayer(coopUUID).getName());
+        if (coopPlayer != null) Msg.send(coopPlayer, lang("claim.coop.kicked").replace("{owner}", actor.getName()));
+        Msg.send(actor, lang("claim.coop.removed").replace("{coop}", coopName));
     }
 
     public void toggleCoopPermission(@NotNull Claim claim, @NotNull UUID player, @NotNull Permission permission) {
-        boolean newState = !claim.getCoopPermissions().get(player).isEnabled(permission);
-        ClaimCoopPermissionToggleEvent toggleEvent = new ClaimCoopPermissionToggleEvent(
-                player,
-                claim,
-                permission,
-                newState
-        );
-        Bukkit.getPluginManager().callEvent(toggleEvent);
-
-        if (toggleEvent.isCancelled()) {
-            Player owner = Bukkit.getPlayer(claim.getOwner());
-            if (owner != null) {
-                ChannelType.CHAT.send(owner, plugin.getLangManager().getString("claim.coop.permission_toggle_cancelled"));
-            }
+        CoopPermission permissions = claim.getCoopPermission(player);
+        boolean newState = !permissions.isEnabled(permission);
+        ClaimCoopPermissionToggleEvent event = new ClaimCoopPermissionToggleEvent(player, claim, permission, newState);
+        Bukkit.getPluginManager().callEvent(event);
+        if (event.isCancelled()) {
+            claim.getOwnerPlayer().ifPresent(owner -> Msg.send(owner, lang("claim.coop.permission_toggle_cancelled")));
             return;
         }
-
-        claim.getCoopPermissions().get(player).toggle(permission);
-
-        if (plugin.getNconfig().isDatabaseEnabled()) {
-            plugin.getDatabaseManager().saveClaim(claim);
-        }
+        permissions.setEnabled(permission, newState);
+        claim.markDirty();
     }
 
-    public void toggleCoopPermissionCategory(Claim claim, @NotNull UUID player, @NotNull PermissionCategory category) {
-        boolean currentState = claim.getCoopPermissions().get(player).hasAllPermissionsInCategory(category);
-        boolean newState = !currentState;
-
-        ClaimCoopPermissionCategoryToggleEvent toggleEvent = new ClaimCoopPermissionCategoryToggleEvent(
-                player,
-                claim,
-                category,
-                newState
-        );
-        Bukkit.getPluginManager().callEvent(toggleEvent);
-
-        if (toggleEvent.isCancelled()) {
-            Player owner = Bukkit.getPlayer(claim.getOwner());
-            if (owner != null) {
-                ChannelType.CHAT.send(owner, plugin.getLangManager().getString("claim.coop.permission_category_toggle_cancelled"));
-            }
+    public void toggleCoopPermissionCategory(@NotNull Claim claim, @NotNull UUID player, @NotNull PermissionCategory category) {
+        CoopPermission permissions = claim.getCoopPermission(player);
+        boolean newState = !permissions.hasAllPermissionsInCategory(category);
+        ClaimCoopPermissionCategoryToggleEvent event = new ClaimCoopPermissionCategoryToggleEvent(player, claim, category, newState);
+        Bukkit.getPluginManager().callEvent(event);
+        if (event.isCancelled()) {
+            claim.getOwnerPlayer().ifPresent(owner -> Msg.send(owner, lang("claim.coop.permission_category_toggle_cancelled")));
             return;
         }
-
-        claim.getCoopPermissions().get(player).setAllPermissionsInCategory(category, newState);
-
-        if (plugin.getNconfig().isDatabaseEnabled()) {
-            plugin.getDatabaseManager().saveClaim(claim);
-        }
-    }
-
-    private void addCoopToClaimData(Claim claim, UUID coopUUID) {
-        claim.getCoopPlayers().add(coopUUID);
-        claim.getCoopPlayerJoinDate().put(coopUUID, new Date());
-        claim.getCoopPermissions().put(coopUUID, new CoopPermission());
-
-        User.getUser(coopUUID).getCoopClaims().add(claim);
-        User.saveUser(coopUUID);
-    }
-
-    private void removeCoopFromClaimData(Claim claim, UUID coopUUID) {
-        claim.getCoopPlayers().remove(coopUUID);
-        claim.getCoopPlayerJoinDate().remove(coopUUID);
-        claim.getCoopPermissions().remove(coopUUID);
-
-        User.getUser(coopUUID).getCoopClaims().remove(claim);
-        User.saveUser(coopUUID);
+        permissions.setAllPermissionsInCategory(category, newState);
+        claim.markDirty();
     }
 
     private boolean canAddCoop(Claim claim, Player actor, Player coopPlayer, boolean isAdmin) {
-        UUID ownerUUID = claim.getOwner();
-        UUID actorUUID = actor.getUniqueId();
         UUID coopUUID = coopPlayer.getUniqueId();
-
-        if (ownerUUID.equals(coopUUID)) {
-            ChannelType.CHAT.send(actor, plugin.getLangManager().getString("command.player.cant_add_self"));
+        if (claim.isOwner(coopUUID)) {
+            Msg.send(actor, lang("command.player.cant_add_self"));
             return false;
         }
-
-        if (isCoopPlayer(claim, coopUUID)) {
-            ChannelType.CHAT.send(actor, plugin.getLangManager().getString("claim.coop.already_added")
-                    .replace("{coop}", coopPlayer.getName()));
+        if (claim.getCoopPlayers().contains(coopUUID)) {
+            Msg.send(actor, lang("claim.coop.already_added").replace("{coop}", coopPlayer.getName()));
             return false;
         }
-
-        if (isAdmin && !ownerUUID.equals(actorUUID) && coopUUID.equals(actorUUID)) {
-            return true;
-        }
-
-        if (!isAdmin && !isClaimOwner(claim, actor) && !plugin.getClaimCoopManager().hasPermission(actor, claim, Permission.ADD_COOP)) {
-            ChannelType.CHAT.send(actor, plugin.getLangManager().getString("command.permission_denied"));
+        if (isAdmin) return true;
+        if (!hasPermission(actor, claim, Permission.ADD_COOP)) {
+            Msg.send(actor, lang("command.permission_denied"));
             return false;
         }
-
-        if (!isAdmin && claim.getCoopPlayers().size() >= plugin.getNconfig().getMaxCoopPlayers(actor)) {
-            ChannelType.CHAT.send(actor, plugin.getLangManager().getString("claim.coop.limit_reached"));
+        // The limit belongs to the owner's rank; use the actor's only while the owner is offline.
+        Player limitHolder = claim.getOwnerPlayer().orElse(actor);
+        if (claim.getCoopPlayers().size() >= plugin.getNconfig().getMaxCoopPlayers(limitHolder)) {
+            Msg.send(actor, lang("claim.coop.limit_reached"));
             return false;
         }
-
         return true;
     }
 
-    public boolean isClaimOwner(Claim claim, Player player) {
-        return claim.getOwner().equals(player.getUniqueId());
+    public boolean isClaimOwner(@NotNull Claim claim, @NotNull Player player) {
+        return claim.isOwner(player.getUniqueId());
     }
 
-    private boolean isCoopPlayer(Claim claim, UUID playerUUID) {
-        return claim.getCoopPlayers().contains(playerUUID);
+    public boolean getCoopPermissionState(@NotNull Claim claim, @NotNull UUID player, @NotNull Permission permission) {
+        return claim.getCoopPlayers().contains(player) && claim.getCoopPermission(player).isEnabled(permission);
     }
 
-    public boolean getCoopPermissionState(Claim claim, @NotNull UUID player, @NotNull Permission permission) {
-        return claim.getCoopPermissions().get(player).isEnabled(permission);
+    private void refreshHologram(Claim claim) {
+        if (plugin.getHologramManager() != null) plugin.getHologramManager().refresh(claim);
+    }
+
+    private String lang(String path) {
+        return plugin.getLangManager().getString(path);
     }
 }

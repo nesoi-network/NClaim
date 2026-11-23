@@ -15,7 +15,6 @@ public enum Permission {
     USE_DISPENSER("Use dispensers"),
     USE_DROPPER("Use droppers"),
 
-    USE_REDSTONE("Use redstone"),
     USE_REPEATER("Use repeaters"),
     USE_COMPARATOR("Use comparators"),
     USE_BUTTONS("Use buttons"),
@@ -76,5 +75,16 @@ public enum Permission {
 
     public PermissionCategory getCategory() {
         return PermissionCategory.getCategoryForPermission(this);
+    }
+
+    /** Lenient lookup for stored data; unknown (legacy) names return {@code null}. */
+    @org.jetbrains.annotations.Nullable
+    public static Permission byName(@org.jetbrains.annotations.Nullable String name) {
+        if (name == null) return null;
+        try {
+            return valueOf(name.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 }

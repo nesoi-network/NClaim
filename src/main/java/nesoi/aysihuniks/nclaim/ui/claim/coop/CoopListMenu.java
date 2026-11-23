@@ -3,7 +3,7 @@ package nesoi.aysihuniks.nclaim.ui.claim.coop;
 import com.google.common.collect.Sets;
 import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.enums.Permission;
-import nesoi.aysihuniks.nclaim.integrations.AnvilManager;
+import nesoi.aysihuniks.nclaim.ui.framework.TextInput;
 import nesoi.aysihuniks.nclaim.ui.claim.management.ClaimManagementMenu;
 import nesoi.aysihuniks.nclaim.ui.shared.BaseMenu;
 import nesoi.aysihuniks.nclaim.ui.shared.ConfirmMenu;
@@ -16,10 +16,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.guimanager.button.Button;
-import org.nandayo.dapi.util.ItemCreator;
-import org.nandayo.dapi.guimanager.MenuType;
-import org.nandayo.dapi.message.ChannelType;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -47,10 +47,8 @@ public class CoopListMenu extends BaseMenu {
         Collection<UUID> uuidsToLoad = coopPlayers.subList(startIndex, endIndex);
         NClaim.inst().getHeadManager().preloadTexturesAsync(uuidsToLoad);
 
-        Bukkit.getScheduler().runTaskAsynchronously(NClaim.inst(), () -> {
-            setupMenu();
-            Bukkit.getScheduler().runTask(NClaim.inst(), () -> displayTo(player));
-        });
+        setupMenu();
+        displayTo(player);
     }
 
     public CoopListMenu(Player player, @NotNull Claim claim, Boolean admin) {
@@ -108,6 +106,7 @@ public class CoopListMenu extends BaseMenu {
             public ItemStack getItem() {
                 return ItemCreator.of(getMaterial("add_coop"))
                         .name(getString("add_coop.display_name"))
+                        .lore(getStringList("add_coop.lore"))
                         .get();
             }
 
@@ -120,10 +119,10 @@ public class CoopListMenu extends BaseMenu {
 
     private void handleAddMember(Player player) {
         MessageType.SEARCH_OPEN.playSound(player);
-        new AnvilManager(player, getString("search_title"),
+        TextInput.open(player, getString("search_title"),
                 (text) -> {
                     if (text == null || text.isEmpty()) {
-                        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.enter_a_player"));
+                        Msg.send(player, NClaim.inst().getLangManager().getString("command.enter_a_player"));
                         MessageType.FAIL.playSound(player);
                         player.closeInventory();
                         return;
@@ -131,7 +130,7 @@ public class CoopListMenu extends BaseMenu {
 
                     if (!admin) {
                         if (text.equalsIgnoreCase(player.getName())) {
-                            ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.player.cant_add_self"));
+                            Msg.send(player, NClaim.inst().getLangManager().getString("command.player.cant_add_self"));
                             MessageType.FAIL.playSound(player);
                             player.closeInventory();
                             return;
@@ -140,7 +139,7 @@ public class CoopListMenu extends BaseMenu {
 
                     Player target = Bukkit.getPlayerExact(text);
                     if (target == null) {
-                        ChannelType.CHAT.send(player, NClaim.inst().getLangManager().getString("command.player.not_found")
+                        Msg.send(player, NClaim.inst().getLangManager().getString("command.player.not_found")
                                 .replace("{target}", text));
                         MessageType.FAIL.playSound(player);
                         player.closeInventory();
@@ -244,7 +243,7 @@ public class CoopListMenu extends BaseMenu {
         final String playerName = coopPlayer.getName() != null ? coopPlayer.getName() : "Unknown";
         final String buttonPath = "coop_info";
 
-        CoopPermission cp = claim.getCoopPermissions().get(coopPlayerUUID);
+        CoopPermission cp = claim.getCoopPermission(coopPlayerUUID);
         int enabledPerms = (int) Arrays.stream(Permission.values())
                 .filter(cp::isEnabled)
                 .count();

@@ -15,9 +15,9 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.nandayo.dapi.guimanager.button.Button;
-import org.nandayo.dapi.guimanager.MenuType;
-import org.nandayo.dapi.util.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -141,23 +141,35 @@ public class CoopPermissionsMenu extends BaseMenu {
 
                 @Override
                 public ItemStack getItem() {
+                    var perms = claim.getCoopPermission(coopPlayer.getUniqueId());
+                    int total = category.getPermissions().size();
+                    long enabled = category.getPermissions().stream().filter(perms::isEnabled).count();
+                    String color = enabled == total ? "&a" : enabled == 0 ? "&c" : "&e";
+                    String status = getString("category_status")
+                            .replace("{enabled}", color + enabled)
+                            .replace("{total}", String.valueOf(total));
                     return ItemCreator.of(CATEGORY_ICONS.get(category))
                             .name(getString("categories." + category.name().toLowerCase() + ".display_name"))
                             .lore(Arrays.asList(
                                     "",
-                                    getString("click_to_view"),
+                                    status,
                                     "",
+                                    getString("click_to_view"),
                                     getString("right_click_toggle")
                             ))
+                            .flags(ItemFlag.values())
                             .get();
                 }
 
                 @Override
                 public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
-                    if (clickType == ClickType.RIGHT) {
+                    if (clickType.isRightClick()) {
+                        // Toggle the whole category and stay here, so the new count is visible.
                         MessageType.CONFIRM.playSound(player);
                         NClaim.inst().getClaimCoopManager()
                                 .toggleCoopPermissionCategory(claim, coopPlayer.getUniqueId(), category);
+                        new CoopPermissionsMenu(player, coopPlayer, claim, admin, null);
+                        return;
                     }
                     MessageType.MENU_FORWARD.playSound(player);
                     new CoopPermissionsMenu(player, coopPlayer, claim, admin, category);
@@ -196,7 +208,9 @@ public class CoopPermissionsMenu extends BaseMenu {
                                     permission.name().toLowerCase() + ".display_name"))
                             .lore(Arrays.asList(
                                     "",
-                                    NClaim.inst().getGuiLangManager().getString(isEnabled ? "enabled.display_name" : "disabled.display_name")
+                                    NClaim.inst().getGuiLangManager().getString(isEnabled ? "enabled.display_name" : "disabled.display_name"),
+                                    "",
+                                    getString("click_to_toggle")
                             ))
                             .flags(ItemFlag.values())
                             .get();
