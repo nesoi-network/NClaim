@@ -48,17 +48,23 @@ public class UpdateChecker {
         return isNewer(latestVersion, current());
     }
 
-    /** Numeric, part-by-part comparison: "3.10.0" > "3.9.1", and an older remote is never "new". */
+    /**
+     * Numeric, part-by-part comparison: "3.10.0" > "3.9.1", and an older remote is never "new".
+     * A release is newer than its own pre-releases: "4.1.0" > "4.1.0-beta.2".
+     */
     static boolean isNewer(@Nullable String remote, String local) {
         if (remote == null) return false;
-        String[] r = remote.replaceFirst("^[vV]", "").split("[.+-]");
-        String[] l = local.replaceFirst("^[vV]", "").split("[.+-]");
+        String remoteCore = remote.replaceFirst("^[vV]", "");
+        String localCore = local.replaceFirst("^[vV]", "");
+        boolean remotePre = remoteCore.contains("-"), localPre = localCore.contains("-");
+        String[] r = remoteCore.split("-", 2)[0].split("\\.");
+        String[] l = localCore.split("-", 2)[0].split("\\.");
         for (int i = 0; i < Math.max(r.length, l.length); i++) {
             int a = i < r.length ? leadingInt(r[i]) : 0;
             int b = i < l.length ? leadingInt(l[i]) : 0;
             if (a != b) return a > b;
         }
-        return false;
+        return localPre && !remotePre;
     }
 
     private static int leadingInt(String s) {
