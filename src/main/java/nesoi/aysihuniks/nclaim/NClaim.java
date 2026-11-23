@@ -7,6 +7,7 @@ import nesoi.aysihuniks.nclaim.enums.Balance;
 import nesoi.aysihuniks.nclaim.hologram.HologramManager;
 import nesoi.aysihuniks.nclaim.integrations.AxSellWand;
 import nesoi.aysihuniks.nclaim.integrations.Expansion;
+import nesoi.aysihuniks.nclaim.integrations.farmer.FarmerIntegration;
 import nesoi.aysihuniks.nclaim.integrations.Metrics;
 import nesoi.aysihuniks.nclaim.model.Claim;
 import nesoi.aysihuniks.nclaim.model.User;
@@ -213,6 +214,9 @@ public final class NClaim extends JavaPlugin {
         if (pm.isPluginEnabled("AxSellwands")) {
             pm.registerEvents(new AxSellWand(this), this);
             Msg.log("&aAxSellwands integration enabled.");
+        }
+        if (pm.isPluginEnabled("Farmer")) {
+            FarmerIntegration.register();
         }
     }
 
