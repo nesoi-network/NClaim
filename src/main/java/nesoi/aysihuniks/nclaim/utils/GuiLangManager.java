@@ -3,8 +3,10 @@ package nesoi.aysihuniks.nclaim.utils;
 import lombok.Getter;
 import nesoi.aysihuniks.nclaim.NClaim;
 import nesoi.aysihuniks.nclaim.enums.Setting;
+import nesoi.aysihuniks.nclaim.integrations.CustomItems;
 import nesoi.aysihuniks.nclaim.model.SettingCfg;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -197,7 +199,8 @@ public class GuiLangManager {
     }
 
     /**
-     * Formats: {@code STONE}, {@code STONE:1001} (custom model data), {@code HEAD-<texture>}
+     * Formats: {@code STONE}, {@code STONE:1001} (custom model data), {@code HEAD-<texture>},
+     * {@code model:namespace:key} (item model), {@code itemsadder:namespace:id}, {@code nexo:id}, {@code oraxen:id}
      * (base64 or textures.minecraft.net id) and {@code HEAD-<texture>:1001}.
      */
     private ItemStack resolveItemStack(String raw, String logPath) {
@@ -206,6 +209,22 @@ public class GuiLangManager {
             return new ItemStack(Material.DIRT);
         }
         String spec = raw.trim();
+        if (CustomItems.handles(spec)) {
+            ItemStack custom = CustomItems.get(spec);
+            if (custom != null) return custom;
+            Msg.log("&cCustom item '" + spec + "' at " + logPath + " was not found (is the plugin installed and loaded?), using DIRT.");
+            return new ItemStack(Material.DIRT);
+        }
+        if (spec.toLowerCase(Locale.ROOT).startsWith("model:")) {
+            NamespacedKey model = NamespacedKey.fromString(spec.substring(6).toLowerCase(Locale.ROOT));
+            ItemStack item = new ItemStack(Material.PAPER);
+            if (model == null) {
+                Msg.log("&cInvalid item model '" + spec + "' at " + logPath + ".");
+                return item;
+            }
+            item.editMeta(meta -> meta.setItemModel(model));
+            return item;
+        }
         Integer customModelData = null;
         int colon = spec.lastIndexOf(':');
         if (colon > 0 && spec.substring(colon + 1).chars().allMatch(Character::isDigit) && colon < spec.length() - 1) {

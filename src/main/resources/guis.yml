@@ -1,3 +1,11 @@
+# material accepts:
+#   STONE                        a vanilla item
+#   PAPER:1001                   with custom model data
+#   model:namespace:key          an item model from a resource pack (1.21.4+)
+#   HEAD-<texture>               a player head (base64 or textures.minecraft.net id)
+#   itemsadder:namespace:id      an ItemsAdder item
+#   nexo:id / oraxen:id          a Nexo or Oraxen item
+
 guis:
   background_buttons: true
   background_1:
