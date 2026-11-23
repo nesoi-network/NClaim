@@ -8,7 +8,7 @@ import nesoi.aysihuniks.nclaim.model.Claim;
 import nesoi.aysihuniks.nclaim.model.SettingCfg;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.nandayo.dapi.message.ChannelType;
+import nesoi.aysihuniks.nclaim.utils.Msg;
 
 @RequiredArgsConstructor
 public class ClaimSettingsManager {
@@ -17,17 +17,17 @@ public class ClaimSettingsManager {
     public void toggleSetting(Claim claim, Player player, Setting setting) {
 
         SettingCfg settingCfg = plugin.getGuiLangManager().getSettingConfig(setting);
-        if (!settingCfg.isChangeable()) {
-            ChannelType.CHAT.send(player, plugin.getLangManager().getString("command.change.setting_cannot_be_changed"));
+        if (settingCfg != null && !settingCfg.isChangeable()) {
+            Msg.send(player, plugin.getLangManager().getString("command.change.setting_cannot_be_changed"));
             return;
         }
-        if (settingCfg.getPermission() != null && !player.hasPermission(settingCfg.getPermission())) {
-            ChannelType.CHAT.send(player, plugin.getLangManager().getString("command.permission_denied"));
+        if (settingCfg != null && settingCfg.getPermission() != null && !player.hasPermission(settingCfg.getPermission())) {
+            Msg.send(player, plugin.getLangManager().getString("command.permission_denied"));
             return;
         }
 
         if (!isAuthorized(claim, player)) {
-            ChannelType.CHAT.send(player, plugin.getLangManager().getString("command.permission_denied"));
+            Msg.send(player, plugin.getLangManager().getString("command.permission_denied"));
             return;
         }
 
@@ -37,15 +37,13 @@ public class ClaimSettingsManager {
         Bukkit.getPluginManager().callEvent(changeEvent);
 
         if (changeEvent.isCancelled()) {
-            ChannelType.CHAT.send(player, plugin.getLangManager().getString("claim.setting_change_cancelled"));
+            Msg.send(player, plugin.getLangManager().getString("claim.setting_change_cancelled"));
             return;
         }
 
         claim.getSettings().set(setting, newState);
 
-        if (plugin.getNconfig().isDatabaseEnabled()) {
-            plugin.getDatabaseManager().saveClaim(claim);
-        }
+        claim.markDirty();
     }
 
     public boolean isSettingEnabled(Claim claim, Setting setting) {
@@ -64,6 +62,6 @@ public class ClaimSettingsManager {
                 claim.getSettings().set(setting, cfg.isDefaultValue());
             }
         }
-        NClaim.inst().getClaimStorageManager().saveClaim(claim);
+        claim.markDirty();
     }
 }

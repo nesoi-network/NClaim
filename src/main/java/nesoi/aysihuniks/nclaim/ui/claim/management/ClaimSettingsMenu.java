@@ -12,9 +12,9 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
-import org.nandayo.dapi.guimanager.button.Button;
-import org.nandayo.dapi.util.ItemCreator;
-import org.nandayo.dapi.guimanager.MenuType;
+import nesoi.aysihuniks.nclaim.ui.framework.Button;
+import nesoi.aysihuniks.nclaim.ui.framework.ItemCreator;
+import nesoi.aysihuniks.nclaim.ui.framework.MenuType;
 
 import java.util.Arrays;
 import java.util.List;
@@ -37,7 +37,11 @@ public class ClaimSettingsMenu extends BaseMenu {
             new SettingData(Setting.MOB_ATTACKING, "mob_attacks", getMaterial("settings.mob_attacks")),
             new SettingData(Setting.MONSTER_SPAWNING, "monster_spawning", getMaterial("settings.monster_spawning")),
             new SettingData(Setting.ANIMAL_SPAWNING, "animal_spawning", getMaterial("settings.animal_spawning")),
-            new SettingData(Setting.VILLAGER_INTERACTION, "villager_interactions", getMaterial("settings.villager_interactions"))
+            new SettingData(Setting.VILLAGER_INTERACTION, "villager_interactions", getMaterial("settings.villager_interactions")),
+            new SettingData(Setting.FIRE_SPREAD, "fire_spread", getMaterial("settings.fire_spread")),
+            new SettingData(Setting.MOB_GRIEFING, "mob_griefing", getMaterial("settings.mob_griefing")),
+            new SettingData(Setting.CROP_TRAMPLING, "crop_trampling", getMaterial("settings.crop_trampling")),
+            new SettingData(Setting.OTHER_EXPLOSIONS, "other_explosions", getMaterial("settings.other_explosions"))
     );
 
     public ClaimSettingsMenu(Player player, Claim claim, int page, boolean admin) {
@@ -51,8 +55,12 @@ public class ClaimSettingsMenu extends BaseMenu {
     }
 
     private void setupMenu() {
-        createInventory(MenuType.CHEST_6_ROWS, getString("title"));
+        // One row of settings (up to 7) fits in 5 rows; a second row under it needs 6.
+        int onPage = Math.max(0, Math.min(settingSlots.length, settings.size() - page * settingSlots.length));
+        createInventory(onPage > 7 ? MenuType.CHEST_6_ROWS : MenuType.CHEST_5_ROWS, getString("title"));
         addNavigationButton();
+        addInfoButton();
+        addResetButton();
         addSettingButtons();
         
         if (hasNextPage()) {
@@ -85,6 +93,69 @@ public class ClaimSettingsMenu extends BaseMenu {
                 } else {
                     new ClaimSettingsMenu(player, claim, page - 1, admin);
                 }
+            }
+        });
+    }
+
+    /** Explains what claim settings are, next to the back button. */
+    private void addInfoButton() {
+        addButton(new Button() {
+            @Override
+            public @NotNull Set<Integer> getSlots() {
+                return Sets.newHashSet(12);
+            }
+
+            @Override
+            public ItemStack getItem() {
+                return ItemCreator.of(getMaterial("info"))
+                        .name(getString("info.display_name"))
+                        .lore(getStringList("info.lore"))
+                        .flags(ItemFlag.values())
+                        .get();
+            }
+
+            @Override
+            public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
+            }
+        });
+    }
+
+    /** Owner or admin: puts every setting back to its default_value (asks first). */
+    private void addResetButton() {
+        addButton(new Button() {
+            @Override
+            public @NotNull Set<Integer> getSlots() {
+                return Sets.newHashSet(14);
+            }
+
+            @Override
+            public ItemStack getItem() {
+                return ItemCreator.of(getMaterial("reset"))
+                        .name(getString("reset.display_name"))
+                        .lore(getStringList("reset.lore"))
+                        .flags(ItemFlag.values())
+                        .get();
+            }
+
+            @Override
+            public void onClick(@NotNull Player player, @NotNull ClickType clickType) {
+                if (!admin && !claim.isOwner(player.getUniqueId())) {
+                    nesoi.aysihuniks.nclaim.utils.Msg.send(player, NClaim.inst().getLangManager().getString("command.permission_denied"));
+                    MessageType.FAIL.playSound(player);
+                    return;
+                }
+                new nesoi.aysihuniks.nclaim.ui.shared.ConfirmMenu(player,
+                        NClaim.inst().getGuiLangManager().getString("confirm_menu.children.reset_settings.display_name"),
+                        NClaim.inst().getGuiLangManager().getStringList("confirm_menu.children.reset_settings.lore"),
+                        result -> {
+                            if ("confirmed".equals(result)) {
+                                nesoi.aysihuniks.nclaim.service.ClaimSettingsManager.resetToDefaults(claim);
+                                MessageType.CONFIRM.playSound(player);
+                                new ClaimSettingsMenu(player, claim, 0, admin);
+                            } else if ("declined".equals(result)) {
+                                new ClaimSettingsMenu(player, claim, page, admin);
+                            }
+                        });
             }
         });
     }
