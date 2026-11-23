@@ -1,5 +1,4 @@
 jdk:
   - openjdk21
-before_install:
-  - sdk install maven 3.8.1
-  - sdk use maven 3.8.1
+install:
+  - ./gradlew publishToMavenLocal

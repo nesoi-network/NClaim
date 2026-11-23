@@ -1,13 +1,14 @@
-# IntelliJ IDEA project files
+# IDE
 .idea/
 **/*.iml
+.vscode/
 
-# Build output folders
+# Build output
+.gradle/
+build/
 **/out/
 **/target/
 
-# Maven generated files
-**/dependency-reduced-pom.xml
-
-# Don't ignore the .gitignore file itself
-!.gitignore
+# run-paper test servers
+run/
+run-folia/
