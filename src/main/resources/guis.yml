@@ -33,7 +33,7 @@ guis:
   # Claim Menu - When /nclaim is typed, it is the menu with operations such as buy claim
   claim_menu:
     title: "Claim Menu"
-    enter_a_name_title: "Enter a name"
+    enter_a_name_title: "Claim name (empty = default)"
     admin:
       display_name: "&6Admin Menu"
       material: "COMMAND_BLOCK"
@@ -90,75 +90,53 @@ guis:
         - "&fLocation: &e{coordinates}"
         - "&fOwner: &e{owner}"
         - ""
-        - "&7You can only view"
+        - "&7What you can do here depends on"
+        - "&7the permissions the owner gave you."
+        - ""
+        - "&eClick to open"
 
   # Claim Management Menu - The menu that opens when interacting with the claim block.
   claim_management_menu:
     title: "Manage Claim"
     enter_a_price_title: "Enter a price"
-    expand:
-      display_name: "&6Expand Claim"
-      material: "GRASS_BLOCK"
+    enter_a_name_title: "New name (empty = reset)"
+    # Claim summary (top left), shown with the claim block's material. Click to recalculate the value.
+    # {name} {owner} {world} {coordinates} {size} {max_size} {coops} {value} {time_left} {sale}
+    # {value_section} expands to info.value_section below.
+    info:
+      display_name: "&6{name}"
+      for_sale: "&aFor sale &7(&e${price}&7)"
+      not_for_sale: "&7Not for sale"
+      valuable_block_format: "&f{block} &8» &e+{value}"
       lore:
         - ""
-        - "&fExpand your claim territory"
-        - "&7• &fAdd new chunks"
-        - "&7• &fView current chunks"
+        - "&fOwner: &e{owner}"
+        - "&fLocation: &7{world}, {coordinates}"
+        - "&fSize: &e{size}&7/{max_size} chunks"
+        - "&fCo-op members: &e{coops}"
+        - "&fTime left: {time_left}"
+        - "&fSale: {sale}"
+        - "{value_section}"
+      # Replaces {value_section}; left out when block_levels.yml lists no blocks.
+      # A line with {valuable_blocks} repeats for the most valuable blocks (values come from block_levels.yml).
+      value_section:
         - ""
-        - "&eClick to manage"
-    time:
-      display_name: "&6Manage Expiration"
-      material: "CLOCK"
+        - "&fClaim value: &e{value}"
+        - "&7Valuable blocks placed in your claim"
+        - "&7raise its value, for example:"
+        - "  &7• {valuable_blocks}"
+        - ""
+        - "&eClick &7- &fRecalculate the value"
+    rename:
+      display_name: "&6Rename Claim"
+      material: "NAME_TAG"
       lore:
         - ""
-        - "&fManage claim duration:"
-        - "&7• &fView expiration date"
-        - "&7• &fExtend claim time"
+        - "&fCurrent name: &e{name}"
+        - "&7Shown on the hologram and in lists."
+        - "&7Leave the name empty to reset it."
         - ""
-        - "&eClick to manage"
-    coop:
-      display_name: "&6Manage Co-ops"
-      material: "TURTLE_HELMET"
-      lore:
-        - ""
-        - "&fManage co-op members:"
-        - "&7• &fAdd/Remove members"
-        - "&7• &fModify permissions"
-        - ""
-        - "&eClick to manage"
-    setting:
-      display_name: "&6Claim Settings"
-      material: "END_CRYSTAL"
-      lore:
-        - ""
-        - "&fConfigure claim settings:"
-        - "&7• &fPermissions"
-        - "&7• &fProtections"
-        - "&7• &fAccess rules"
-        - ""
-        - "&eClick to configure"
-    claim_block:
-      display_name: "&6Claim Block"
-      material: "SHULKER_BOX"
-      lore:
-        - ""
-        - "&fManage your claim block:"
-        - "&7• &fChange block appearance"
-        - "&7• &fTeleport to claim"
-        - "&7• &fMove the block"
-        - ""
-        - "&eClick to manage"
-    sell:
-      display_name: "&6Sell The Claim"
-      material: "GOLD_INGOT"
-      lore:
-        - ""
-        - "&fSell this claim:"
-        - "&7• &fSet a custom sale price"
-        - "&7• &fTransfer ownership instantly"
-        - "&7• &fEarn money from the sale"
-        - ""
-        - "&eClick to list for sale"
+        - "&eClick to rename"
     delete:
       display_name: "&cDelete Claim"
       material: "TNT"
@@ -168,6 +146,91 @@ guis:
         - "&fyour claim without any refund"
         - ""
         - "&eClick to proceed"
+    expand:
+      display_name: "&6Expand Claim"
+      material: "GRASS_BLOCK"
+      lore:
+        - ""
+        - "&fAdd neighbouring chunks to your claim"
+        - "&fSize: &e{size}&7/{max_size} chunks"
+        - "&fNext chunk: &e{next_price}"
+        - ""
+        - "&eClick to open the chunk map"
+      max_reached: "&cmaximum size reached"
+    time:
+      display_name: "&6Manage Expiration"
+      material: "CLOCK"
+      lore:
+        - ""
+        - "&fTime left: {time_left}"
+        - "&7When the time runs out the claim"
+        - "&7is deleted. Extend it in time!"
+        - ""
+        - "&eClick to extend"
+    coop:
+      display_name: "&6Manage Co-ops"
+      material: "TURTLE_HELMET"
+      lore:
+        - ""
+        - "&fMembers: &e{coops}"
+        - "&7Let friends build with you and"
+        - "&7choose what each of them may do."
+        - ""
+        - "&eClick to manage"
+    setting:
+      display_name: "&6Claim Settings"
+      material: "END_CRYSTAL"
+      lore:
+        - ""
+        - "&fPvP, explosions, mob spawning,"
+        - "&ffire spread and more."
+        - ""
+        - "&eClick to configure"
+    claim_block:
+      display_name: "&6Claim Block"
+      material: "SHULKER_BOX"
+      lore:
+        - ""
+        - "&fCurrent block: &e{block}"
+        - "&7• &fChange its look"
+        - "&7• &fTeleport to your claim"
+        - "&7• &fMove it inside the main chunk"
+        - ""
+        - "&eClick to manage"
+    sell:
+      display_name: "&6Sell The Claim"
+      material: "GOLD_INGOT"
+      # Shown while the claim is not for sale
+      lore:
+        - ""
+        - "&fStatus: &7Not for sale"
+        - "&7Set a price; anyone can then buy it"
+        - "&7from the claim block. The money goes"
+        - "&7to you and the buyer becomes the owner."
+        - ""
+        - "&eClick to set a price"
+      # Shown while the claim is for sale
+      lore_for_sale:
+        - ""
+        - "&fStatus: &aFor sale &7(&e${price}&7)"
+        - ""
+        - "&eLeft Click &7- &fChange the price"
+        - "&eRight Click &7- &fStop selling"
+    borders:
+      display_name: "&6Show Claim Borders"
+      material: "ENDER_EYE"
+      status_on: "&aShown"
+      status_off: "&cHidden"
+      lore:
+        - ""
+        - "&fShows nearby claim borders as"
+        - "&fcolored walls, only for you."
+        - "&a■ &fyours  &b■ &fco-op  &c■ &fothers"
+        - "&7Same as &e/nclaim border"
+        - ""
+        - "&fStatus: {status}"
+        - ""
+        - "&eClick to toggle"
 
   # Claim Expand Menu - The menu that opens after interacting with the claim block and clicking the 'Expand Claim' button.
   claim_expand_menu:
@@ -179,54 +242,69 @@ guis:
       lore:
         - ""
         - "&fThis is your claim's center chunk"
+        - "&7The claim block is in this chunk."
+        - ""
+        - "&eClick &7- &fBack to claim management"
     expand:
       display_name: "&6Expand Claim"
       material: "BROWN_WOOL"
       lore:
         - ""
-        - "&fExpand your claim"
+        - "&fAdd this chunk to your claim"
         - "&7Cost: &e${price}"
         - ""
-        - "&eClick to purchase"
+        - "&eLeft Click &7- &fPurchase"
+        - "&eRight Click &7- &fShow its borders"
     claimed:
       display_name: "&aClaimed Chunk"
       material: "GREEN_WOOL"
       lore:
         - ""
-        - "&fThis chunk is claimed"
+        - "&fThis chunk is part of your claim"
+        - ""
+        - "&eRight Click &7- &fUnclaim this chunk"
     not_adjacent:
       display_name: "&cInvalid Chunk"
       material: "BLACK_WOOL"
       lore:
         - ""
-        - "&fYou can only claim adjacent chunks"
+        - "&fYou can only claim chunks next to"
+        - "&fyour claim (not diagonally)."
     claimed_another_player:
       display_name: "&cClaimed by Another Player"
       material: "RED_WOOL"
       lore:
         - ""
         - "&fThis chunk belongs to someone else"
+        - "&7It cannot be added to your claim."
 
   # Claim Time Management Menu - The menu that opens after interacting with the claim block and clicking the 'Manage Expiration' button.
   claim_time_management_menu:
     title: "Manage Time"
     claim_info:
       display_name: "&6Duration Info"
-      material: "ITEM_FRAME"
+      material: "GLOW_ITEM_FRAME"
       lore:
         - ""
         - "&fTime Remaining: &e{time_left}"
         - "&fExpires: &e{expires_at}"
+        - ""
+        - "&7When the time runs out the claim is"
+        - "&7deleted and your builds lose protection."
+    # {d} {h} {m} = time to add, {price} = total cost incl. tax, {tax} = tax part
     confirm:
-      display_name: "&aConfirm Changes"
+      display_name: "&aExtend Claim"
       material: "BLUE_ICE"
       lore:
         - ""
-        - "&fNew duration:"
+        - "&fTime to add:"
         - "&7• &e{d} &fdays"
         - "&7• &e{h} &fhours"
         - "&7• &e{m} &fminutes"
-        - "&7Cost: &e${price}"
+        - ""
+        - "&fCost: &e{price} &7(tax: {tax})"
+        - ""
+        - "&eClick to pay and extend"
     select_time_unit:
       display_name: "&6Select Time Unit"
       material: "CHAIN"
@@ -235,21 +313,35 @@ guis:
         - "&f• {days_status}"
         - "&f• {hours_status}"
         - "&f• {minutes_status}"
+        - ""
+        - "&eClick to switch the unit"
     days_status: "Days" # You cannot use color codes.
     hours_status: "Hours"
     minutes_status: "Minutes"
     add_one:
       display_name: "&a+1 {unit}"
       material: "LIME_CONCRETE"
+      lore:
+        - ""
+        - "&eClick to add"
     add_six:
       display_name: "&a+6 {unit}"
       material: "GREEN_CONCRETE"
+      lore:
+        - ""
+        - "&eClick to add"
     subtract_one:
       display_name: "&c-1 {unit}"
       material: "PINK_CONCRETE"
+      lore:
+        - ""
+        - "&eClick to remove"
     subtract_six:
       display_name: "&c-6 {unit}"
       material: "RED_CONCRETE"
+      lore:
+        - ""
+        - "&eClick to remove"
 
   claim_manage_coop_menu:
     title: "Co-op Members"
@@ -257,6 +349,12 @@ guis:
     add_coop:
       display_name: "&aAdd Member"
       material: "NETHER_STAR"
+      lore:
+        - ""
+        - "&fLet a friend build in your claim."
+        - "&7You choose what they may do after."
+        - ""
+        - "&eClick and type a player name"
     search_title: "Enter a player name"
     empty_slot:
       display_name: "&fEmpty Slot"
@@ -269,7 +367,8 @@ guis:
       material: "RED_STAINED_GLASS_PANE"
       lore:
         - ""
-        - "&ePermission required"
+        - "&fYour co-op limit is reached."
+        - "&7More slots come with a higher rank."
     coop_info:
       display_name: "&e{player}"
       lore:
@@ -284,8 +383,10 @@ guis:
 
   manage_coop_player_permission_menu:
     title: "Manage {player}"
-    click_to_view: "&eClick to view"
+    click_to_view: "&eLeft-click to view"
     right_click_toggle: "&eRight-click to toggle all"
+    click_to_toggle: "&eClick to toggle"
+    category_status: "&7Allowed: {enabled}&7/&f{total}"
     offline: "&7(Offline)"
     player_info:
       display_name: "&e{player}"
@@ -313,7 +414,7 @@ guis:
         - "&fKick this co-op"
         - "&ffrom your claim"
         - ""
-        - "&7Click to kick"
+        - "&eClick to kick"
     categories:
       blocks:
         display_name: "&6Block Permissions"
@@ -598,9 +699,92 @@ guis:
           - "&7Status: {status}"
           - ""
           - "&eClick to toggle"
+      fire_spread:
+        default_value: false
+        changeable: true
+        display_name: "&6Fire Spread"
+        material: "CAMPFIRE"
+        lore:
+          - ""
+          - "&fAllow fire to spread and burn"
+          - "&fblocks in the claim"
+          - ""
+          - "&7Status: {status}"
+          - ""
+          - "&eClick to toggle"
+      mob_griefing:
+        default_value: false
+        changeable: true
+        display_name: "&6Mob Griefing"
+        material: "ENDER_PEARL"
+        lore:
+          - ""
+          - "&fAllow hostile mobs to change blocks:"
+          - "&7endermen taking blocks, ravagers,"
+          - "&7withers, zombies breaking doors"
+          - ""
+          - "&7Status: {status}"
+          - ""
+          - "&eClick to toggle"
+      crop_trampling:
+        default_value: false
+        changeable: true
+        display_name: "&6Crop Trampling"
+        material: "WHEAT"
+        lore:
+          - ""
+          - "&fAllow farmland to turn into dirt"
+          - "&fwhen someone jumps on it"
+          - ""
+          - "&7Status: {status}"
+          - ""
+          - "&eClick to toggle"
+      other_explosions:
+        default_value: false
+        changeable: true
+        display_name: "&6Other Explosions"
+        material: "FIRE_CHARGE"
+        lore:
+          - ""
+          - "&fAllow other explosions to damage"
+          - "&fblocks: withers, ghast fireballs,"
+          - "&fbeds and respawn anchors"
+          - ""
+          - "&7Status: {status}"
+          - ""
+          - "&eClick to toggle"
+    info:
+      display_name: "&6About Claim Settings"
+      material: "BOOK"
+      lore:
+        - ""
+        - "&fThese rules apply to the whole claim,"
+        - "&ffor everyone inside it."
+        - "&7What each co-op member may do is set"
+        - "&7in the co-op menu instead."
+    reset:
+      display_name: "&cReset to Defaults"
+      material: "WATER_BUCKET"
+      lore:
+        - ""
+        - "&fPuts every setting back to the"
+        - "&fserver's default."
+        - ""
+        - "&eClick to reset (asks first)"
 
   claim_block_management_menu:
     title: "Claim Block Management"
+    enter_a_price_title: "Price for everyone"
+    # Admin only: empty block slots. Hold a block in your hand and click.
+    add_block:
+      display_name: "&fAdd a Block Type"
+      material: "WHITE_STAINED_GLASS_PANE"
+      lore:
+        - ""
+        - "&fChoose a block, its name and price,"
+        - "&ffor every claim or only this one."
+        - ""
+        - "&eClick to open"
     teleport:
       display_name: "&6Teleport to Claim"
       material: "ENDER_PEARL"
@@ -614,12 +798,173 @@ guis:
       material: "SHULKER_BOX"
       lore:
         - ""
-        - "&fMoves the claim block to your location"
+        - "&fMoves the claim block to where you stand"
+        - "&7You must be inside the claim's main chunk"
+        - "&7and stand on an empty spot."
         - ""
         - "&eClick to proceed"
+    # Claim block types listed in this menu (blocks come from claim_blocks.yml).
+    # {block} = block name, {cost} = price, {balance} = your balance, {need_balance} = min(balance, price).
+    # A lore set in claim_blocks.yml replaces the "locked" lore below.
+    block_item:
+      display_name: "&e{block}"
+      enough_balance_color: "&a"
+      not_enough_balance_color: "&c"
+      selected:
+        lore:
+          - ""
+          - "&a✔ Currently in use"
+      owned:
+        lore:
+          - ""
+          - "&fYou already own this block"
+          - ""
+          - "&eClick to use it"
+      locked:
+        lore:
+          - ""
+          - "&fPrice: &6${cost}"
+          - "&fYour balance: {balance}"
+          - ""
+          - "&eClick to buy and use it"
+      no_permission:
+        lore:
+          - ""
+          - "&cYou don't have permission for this block"
+      # Added under the lore of a block an admin gave only to this claim
+      claim_only_lore:
+        - "&7Only available for this claim"
+      # Added under every block when the menu is opened from the admin menu
+      admin_lore:
+        - ""
+        - "&8Admin:"
+        - "&eRight Click &7- &fChange price &7(${cost})"
+        - "&eShift + Right Click &7- &fRemove for every claim"
+      admin_claim_only_lore:
+        - ""
+        - "&8Admin:"
+        - "&eRight Click &7- &fChange price &7(${cost})"
+        - "&eShift + Right Click &7- &fRemove from this claim"
+
+  # Admin editor for a new claim block type (opened from an empty slot of the claim block menu)
+  claim_block_add_menu:
+    title: "Add Claim Block"
+    enter_a_name_title: "Block name"
+    enter_a_price_title: "Price"
+    block:
+      empty:
+        display_name: "&6Choose a Block"
+        material: "BARRIER"
+        lore:
+          - ""
+          - "&fNo block selected yet."
+          - ""
+          - "&eClick to choose"
+      selected:
+        display_name: "&6Block: &e{block}"
+        lore:
+          - ""
+          - "&eClick to choose another"
+    name:
+      display_name: "&6Name: &e{name}"
+      material: "NAME_TAG"
+      lore:
+        - ""
+        - "&fShown in the claim block menu."
+        - "&7Used for every-claim blocks only."
+        - ""
+        - "&eClick to change"
+    price:
+      display_name: "&6Price: &e${price}"
+      material: "GOLD_INGOT"
+      lore:
+        - ""
+        - "&fWhat a player pays once to"
+        - "&funlock this block for a claim."
+        - ""
+        - "&eClick to change"
+    scope:
+      everyone:
+        display_name: "&6For: &aEvery claim"
+        material: "ENDER_EYE"
+        lore:
+          - ""
+          - "&fSaved to claim_blocks.yml and"
+          - "&fshown in every claim's menu."
+          - ""
+          - "&eClick to switch to this claim only"
+      this_claim:
+        display_name: "&6For: &bThis claim only"
+        material: "ENDER_PEARL"
+        lore:
+          - ""
+          - "&fOnly this claim can buy the block,"
+          - "&fat the price you set (0 = free)."
+          - ""
+          - "&eClick to switch to every claim"
+    save:
+      display_name: "&aAdd Block"
+      material: "LIME_CONCRETE"
+      lore:
+        - ""
+        - "&fBlock: &e{block}"
+        - "&fPrice: &e{price}"
+        - "&f{scope}"
+        - ""
+        - "&eClick to save"
+
+  # Block chooser (all solid blocks). {page} {pages}
+  block_picker_menu:
+    title: "Choose a Block ({page}/{pages})"
+    search_title: "Search blocks"
+    block:
+      display_name: "&e{block}"
+      lore:
+        - ""
+        - "&eClick to choose"
+    search:
+      display_name: "&6Search"
+      material: "OAK_SIGN"
+      none: "&7none"
+      lore:
+        - ""
+        - "&fSearch: &e{search}"
+        - "&fBlocks found: &e{count}"
+        - ""
+        - "&eLeft Click &7- &fSearch by name"
+        - "&eRight Click &7- &fClear the search"
 
   admin_menu:
     all_claims_menu:
+      # Server wide numbers at the top. {claims} {owners} {chunks} {for_sale}
+      stats:
+        display_name: "&6Server Claims"
+        material: "BOOK"
+        lore:
+          - ""
+          - "&fClaims: &e{claims}"
+          - "&fOwners: &e{owners}"
+          - "&fClaimed chunks: &e{chunks}"
+          - "&fFor sale: &e{for_sale}"
+      # Shown when the server has no claims at all
+      empty:
+        display_name: "&7No claims yet"
+        material: "STRUCTURE_VOID"
+        lore:
+          - ""
+          - "&fNobody has claimed land on this server."
+          - "&7Players buy claims from the"
+          - "&e/nclaim &7menu (Buy a Claim)."
+          - "&7Claims will be listed here."
+      # Shown when the search/sale filter hides every claim
+      empty_filtered:
+        display_name: "&7No matching claims"
+        material: "STRUCTURE_VOID"
+        lore:
+          - ""
+          - "&fNo claim matches the current filters."
+          - ""
+          - "&eClick to reset the filters"
       not_selected_color: "&7"
       selected_color: "&e"
       newest: "Newest First"
@@ -629,11 +974,22 @@ guis:
       not_for_sale: "Not For Sale"
       title: "All Claims"
       reset_settings:
-        display_name: "&cReset Settings"
+        display_name: "&cReset Filters"
         material: "BOOK"
+        lore:
+          - ""
+          - "&fClears the search, sale filter"
+          - "&fand selection."
+          - ""
+          - "&eClick to reset"
       search_player:
         display_name: "&aSearch Player"
         material: "NETHER_STAR"
+        lore:
+          - ""
+          - "&fShow only one player's claims."
+          - ""
+          - "&eClick and type a player name"
       sort_by_date:
         display_name: "&aSort by Date"
         material: "GOLD_BLOCK"
@@ -652,6 +1008,12 @@ guis:
       delete_selected:
         display_name: "&cDelete Selected"
         material: "BARRIER"
+        lore:
+          - ""
+          - "&fDeletes every selected claim."
+          - "&7Right click claims to select them."
+          - ""
+          - "&eClick to delete (asks first)"
       claim_items:
         selected:
           display_name: "&a{owner}'s Claim &7(Selected)"
@@ -691,15 +1053,21 @@ guis:
     title: "Confirm Action"
     confirm:
       display_name: "&aConfirm"
-      material: "GREEN_DYE"
+      material: "LIME_DYE"
+      lore:
+        - ""
+        - "&eClick to confirm"
     decline:
-      display_name: "&cDecline"
+      display_name: "&cCancel"
       material: "RED_DYE"
+      lore:
+        - ""
+        - "&eClick to cancel"
     center:
       material: "BOOK"
     children:
       land_unclaim:
-        display_name: "&8Unclaim Land?"
+        display_name: "&6Unclaim Land?"
         lore:
           - ""
           - "&7This land chunk will be"
@@ -707,8 +1075,6 @@ guis:
           - ""
           - "&cWarning: &7Builds in this area"
           - "&7will become unprotected!"
-          - ""
-          - "&aClick to confirm"
       buy_new_claim:
         display_name: "&6Buy a New Claim"
         lore:
@@ -716,9 +1082,6 @@ guis:
           - "&fIf you approve this action:"
           - "&7• &e${price} &fwill be deducted from your balance"
           - "&7• &fYou will receive a &enew Claim"
-          - ""
-          - "&aClick to green dye for confirm purchase"
-          - "&cClick to red dye for cancel purchase"
       claim_expand:
         display_name: "&6Expand Claim"
         lore:
@@ -726,19 +1089,15 @@ guis:
           - "&fIf you approve this action:"
           - "&7• &fCost: &e${price}"
           - "&7• &fSelected chunk will be added to your claim"
-          - ""
-          - "&aClick to green dye for confirm expansion"
-          - "&cClick to red dye for cancel expansion"
       delete_claim:
         display_name: "&6Delete Claim"
         lore:
           - ""
           - "&cWarning: &fThis action will:"
           - "&7• &fPermanently delete your claim"
+          - "&7• &fLeave your builds unprotected"
+          - "&7• &fNot refund any money"
           - "&7• &fCannot be undone"
-          - ""
-          - "&aClick to green dye for confirm deletion"
-          - "&cClick to red dye for cancel deletion"
       kick_coop:
         display_name: "&6Remove Co-op"
         lore:
@@ -746,9 +1105,6 @@ guis:
           - "&fThis action will:"
           - "&7• &fRemove &e{player} &ffrom your claim"
           - "&7• &fRevoke all their permissions"
-          - ""
-          - "&aClick to green dye for confirm removal"
-          - "&cClick to red dye for cancel removal"
       add_coop:
         display_name: "&6Add Co-op Member"
         lore:
@@ -756,9 +1112,6 @@ guis:
           - "&fThis action will:"
           - "&7• &fAdd &e{player} &fto your claim"
           - "&7• &fGrant them co-op permissions"
-          - ""
-          - "&aClick to green dye for confirm addition"
-          - "&cClick to red dye for cancel addition"
       transfer_claim:
         display_name: "&6Transfer Claim"
         lore:
@@ -767,9 +1120,6 @@ guis:
           - "&7• &fTransfer ownership to &e{player}"
           - "&7• &fRemove your access to this claim"
           - "&7• &fCannot be undone"
-          - ""
-          - "&aClick to green dye for confirm transfer"
-          - "&cClick to red dye for cancel transfer"
       admin_delete_claim:
         display_name: "&6Delete Selected Claims"
         lore:
@@ -777,9 +1127,6 @@ guis:
           - "&cWarning: &fThis action will:"
           - "&7• &fPermanently delete selected claims"
           - "&7• &fCannot be undone"
-          - ""
-          - "&aClick to green dye for confirm deletion"
-          - "&cClick to red dye for cancel deletion"
       move_claim_block:
         display_name: "&6Move Claim Block"
         lore:
@@ -787,9 +1134,31 @@ guis:
           - "&fThis action will:"
           - "&7• &fMove the claim block to your location"
           - "&7• &fTeleportation point will also move alongside it"
+      reset_settings:
+        display_name: "&cReset Claim Settings?"
+        lore:
           - ""
-          - "&aClick green dye to confirm move"
-          - "&cClick to red dye to cancel move"
+          - "&fThis action will:"
+          - "&7• &fPut every claim setting back"
+          - "&7  &fto the server's default"
+      # Admin: shift + right click on a claim block type. {block} {default_block}
+      remove_claim_block:
+        display_name: "&cRemove {block}?"
+        lore:
+          - ""
+          - "&cWarning: &fThis action will:"
+          - "&7• &fRemove &e{block} &ffor every claim"
+          - "&7• &fTake it from claims that bought it"
+          - "&7• &fSwitch claims using it to &e{default_block}"
+          - "&7• &fCannot be undone"
+      remove_claim_block_claim:
+        display_name: "&cRemove {block}?"
+        lore:
+          - ""
+          - "&fThis action will:"
+          - "&7• &fRemove &e{block} &ffrom this claim"
+          - "&7• &fSwitch the claim to &e{default_block}"
+          - "&7  &fif it is using this block"
       buy_player_claim:
         display_name: "&6Purchase Claim"
         lore:
@@ -801,9 +1170,6 @@ guis:
           - "&7• &fTransfer ownership to you"
           - "&7• &fReset all claim settings to default"
           - "&7• &fRemove all existing co-op members"
-          - ""
-          - "&aClick green dye to confirm purchase"
-          - "&cClick red dye to cancel purchase"
 
 # DO NOT CHANGE!
-gui_version: "{version}"
+gui_version: "@version@"

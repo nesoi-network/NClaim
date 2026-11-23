@@ -1,0 +1,520 @@
+# NClaim - forbidden words in claim names (used when buying a claim and by /nclaim name).
+#
+# One entry per line; lines starting with # are ignored. Edit freely: this file is created once and
+# never overwritten by updates. Apply changes with /nclaim admin reload.
+#
+# Matching:
+# - Case-insensitive. Turkish letters and look-alikes count: 1/! = i, 3 = e, 0 = o, 4/@ = a, $/5 = s, 7 = t.
+# - Words of 5+ letters match at the start of any word, also with suffixes ("orospular") and when
+#   split with dots, spaces or dashes ("N.1 g-g3r" matches "nigger"). They do not match inside
+#   another word, so "Basement" (semen) and "Therapist" (rapist) are fine.
+# - Shorter words only match as a whole word, so "amk" does not hit "adam kadar".
+# - regex:<pattern> lines are Java regular expressions matched against the name as typed.
+#
+# Sources: the English and Turkish lists of "List of Dirty, Naughty, Obscene, and Otherwise Bad Words"
+# (https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words, CC BY 4.0),
+# trimmed of words that would block innocent names (e.g. "hardcore", "negro" -> "Montenegro",
+# "götten" -> "forgotten"), plus additions by NClaim.
+
+# ---------- Slurs and hate (NClaim additions) ----------
+retard
+hitler
+nazi
+chink
+
+# ---------- Turkish insults (NClaim additions) ----------
+orosbu
+kahpe
+pezevenk
+sürtük
+gavat
+ibne
+amk
+amına
+amına koyayım
+yavşak
+puşt
+piç
+şerefsiz
+ananı
+ananı sikeyim
+sikerim
+siktiğim
+sikik
+yarrak
+amcık
+götveren
+
+# ---------- English (LDNOOBW) ----------
+2 girls 1 cup
+acrotomophilia
+alabama hot pocket
+alaskan pipeline
+anal
+anilingus
+anus
+apeshit
+arsehole
+ass
+asshole
+assmunch
+auto erotic
+autoerotic
+babeland
+baby batter
+baby juice
+ball gag
+ball gravy
+ball kicking
+ball licking
+ball sack
+ball sucking
+bangbros
+bangbus
+barely legal
+bastard
+bastardo
+bbw
+bdsm
+beaner
+beaners
+beaver cleaver
+beaver lips
+beastiality
+bestiality
+big breasts
+big knockers
+big tits
+bimbos
+birdlock
+bitch
+bitches
+black cock
+blowjob
+blow job
+blow your load
+blue waffle
+blumpkin
+bollocks
+bondage
+boner
+boob
+boobs
+booty call
+brown showers
+bukkake
+bulldyke
+bullet vibe
+bullshit
+bung hole
+bunghole
+busty
+butt
+buttcheeks
+butthole
+camel toe
+camgirl
+camslut
+camwhore
+carpet muncher
+carpetmuncher
+cialis
+circlejerk
+cleveland steamer
+clit
+clitoris
+clover clamps
+clusterfuck
+cock
+cocks
+coprolagnia
+coprophilia
+cornhole
+coon
+coons
+creampie
+cum
+cumming
+cumshot
+cumshots
+cunnilingus
+cunt
+darkie
+date rape
+daterape
+deep throat
+deepthroat
+dendrophilia
+dick
+dildo
+dingleberry
+dingleberries
+dirty sanchez
+doggie style
+doggiestyle
+doggy style
+doggystyle
+dog style
+dolcett
+dominatrix
+dommes
+donkey punch
+double dong
+double penetration
+dp action
+dry hump
+dvda
+eat my ass
+ecchi
+ejaculation
+erotic
+erotism
+fag
+faggot
+fecal
+felch
+fellatio
+feltch
+female squirting
+femdom
+fingerbang
+fingering
+fisting
+foot fetish
+footjob
+frotting
+fuck
+fuck buttons
+fuckin
+fucking
+fucktards
+fudge packer
+fudgepacker
+futanari
+gangbang
+gang bang
+gay sex
+genitals
+giant cock
+girls gone wild
+goatcx
+goatse
+gokkun
+golden shower
+goodpoop
+goo girl
+goregasm
+grope
+group sex
+g-spot
+guro
+hand job
+handjob
+hentai
+homoerotic
+honkey
+hooker
+horny
+hot carl
+humping
+incest
+jack off
+jail bait
+jailbait
+jerk off
+jigaboo
+jiggaboo
+jiggerboo
+jizz
+juggs
+kike
+kinbaku
+kinkster
+kinky
+knobbing
+leather restraint
+leather straight jacket
+lemon party
+livesex
+make me come
+male squirting
+masturbate
+masturbating
+masturbation
+menage a trois
+milf
+missionary position
+motherfucker
+mound of venus
+mr hands
+muff diver
+muffdiving
+nambla
+nawashi
+neonazi
+nigga
+nigger
+nig nog
+nimphomania
+nipple
+nipples
+nsfw
+nsfw images
+nude
+nudity
+nutten
+nympho
+nymphomania
+octopussy
+omorashi
+one cup two girls
+one guy one jar
+orgasm
+orgy
+paedophile
+paki
+panties
+panty
+pedobear
+pedophile
+pegging
+penis
+phone sex
+piece of shit
+pikey
+pissing
+piss pig
+pisspig
+pole smoker
+ponyplay
+poof
+poon
+poontang
+punany
+poop chute
+poopchute
+porn
+porno
+pornography
+pthc
+pubes
+pussy
+queaf
+queef
+quim
+raghead
+raging boner
+rape
+raping
+rapist
+rectum
+reverse cowgirl
+rimjob
+rimming
+rosy palm
+rosy palm and her 5 sisters
+rusty trombone
+sadism
+schlong
+semen
+sex
+sexcam
+sexo
+sexy
+shaved beaver
+shaved pussy
+shemale
+shibari
+shit
+shitblimp
+shitty
+shota
+skeet
+slanteye
+slut
+smut
+sodomize
+sodomy
+spastic
+spic
+splooge
+splooge moose
+spooge
+spread legs
+spunk
+strap on
+strapon
+strappado
+strip club
+style doggy
+suck
+sucks
+suicide girls
+swastika
+tea bagging
+threesome
+throating
+thumbzilla
+tit
+tits
+titties
+titty
+topless
+tosser
+towelhead
+tranny
+tribadism
+tub girl
+tubgirl
+tushy
+twat
+twink
+two girls one cup
+upskirt
+urethra play
+urophilia
+vagina
+venus mound
+viagra
+vibrator
+vorarephilia
+vulva
+wank
+wetback
+wet dream
+white power
+whore
+worldsex
+xxx
+yaoi
+yellow showers
+yiffy
+zoophilia
+🖕
+
+# ---------- Turkish (LDNOOBW) ----------
+amcığa
+amcığı
+amcığın
+amcık
+amcıklar
+amcıklara
+amcıklarda
+amcıklardan
+amcıkları
+amcıkların
+amcıkta
+amcıktan
+göt
+göte
+götler
+götlerde
+götlerden
+götlere
+götleri
+götlerin
+götü
+götün
+götveren
+götverende
+götverenden
+götverene
+götvereni
+götverenin
+götverenler
+götverenlerde
+götverenlerden
+götverenlere
+götverenleri
+götverenlerin
+kaltağa
+kaltağı
+kaltağın
+kaltak
+kaltaklar
+kaltaklara
+kaltaklarda
+kaltaklardan
+kaltakları
+kaltakların
+kaltakta
+kaltaktan
+orospu
+orospuda
+orospudan
+orospular
+orospulara
+orospularda
+orospulardan
+orospuları
+orospuların
+orospunun
+orospuya
+orospuyu
+otuz birci
+otuz bircide
+otuz birciden
+otuz birciler
+otuz bircilerde
+otuz bircilerden
+otuz bircilere
+otuz bircileri
+otuz bircilerin
+otuz bircinin
+otuz birciye
+otuz birciyi
+saksocu
+saksocuda
+saksocudan
+saksocular
+saksoculara
+saksocularda
+saksoculardan
+saksocuları
+saksocuların
+saksocunun
+saksocuya
+saksocuyu
+sıçmak
+sik
+sike
+siker sikmez
+siki
+sikilir sikilmez
+sikin
+sikler
+siklerde
+siklerden
+siklere
+sikleri
+siklerin
+sikmek
+sikmemek
+sikte
+sikten
+siktir
+siktirir siktirmez
+taşağa
+taşağı
+taşağın
+taşak
+taşaklar
+taşaklara
+taşaklarda
+taşaklardan
+taşakları
+taşakların
+taşakta
+taşaktan
+yarağa
+yarağı
+yarağın
+yarak
+yaraklar
+yaraklara
+yaraklarda
+yaraklardan
+yarakları
+yarakların
+yarakta
+yaraktan

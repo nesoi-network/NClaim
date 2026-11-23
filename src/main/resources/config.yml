@@ -5,15 +5,27 @@ check_for_updates: true  # Enable/disable update checker
 lang_file: "en-US"      # Language file to use (en-US, tr-TR)
 prefix: "&8[<#fa8443>NClaim&8]&r"  # Plugin prefix in chat messages
 
+# How prices, balances and claim values are shown (menus, holograms, placeholders)
+#   compact: 950, 1.5k, 20.3k, 1.25M
+#   full:    950, 1,500, 20,300, 1,250,000
+# At most two decimals are shown in both styles.
+number_format:
+  style: compact
+  suffixes: ["k", "M", "B", "T"]
+
 # World Restrictions
 # Configure which worlds and WorldGuard regions are restricted from claiming
-blacklisted_worlds:
-  - world   # Example: Main world
-  - spawn   # Example: Spawn world
-  - pvp     # Example: PvP arena world
+# Empty by default, so claiming works out of the box. Example:
+# blacklisted_worlds:
+#   - spawn   # spawn world
+#   - pvp     # PvP arena world
+# Also manageable in-game: /nclaim admin add|remove blacklisted_world <world>
+blacklisted_worlds: []
 
-blacklisted_regions:
-  - spawnarea  # Example: spawn protection area
+# Example:
+# blacklisted_regions:
+#   - spawnarea  # spawn protection area
+blacklisted_regions: []
 
 claim_distance:
   chunks: 1 # How many chunks away from nearby claims can a player create a claim.
@@ -105,6 +117,14 @@ claim_settings:
   expiry_days: 7      # Days until an inactive claim expires
   last_claim_time: 5  # The time (in minutes) to wait before making a new claim after buying a claim
   sell: true # Enable or disable selling claims
+  max_chunks: 117     # Maximum chunks per claim, including the main chunk (1-117)
+  default_name: ""    # Name for new claims when none is given. {player} = owner name. Empty = use the claim id
+  # Forbidden claim names live in plugins/NClaim/name_blacklist.txt (one word per line, ships with
+  # a list of common slurs and insults). Entries here are added on top of that file.
+  # Same rules: case-insensitive, look-alikes count (1=i, 3=e, 0=o, 4/@=a, $=s), words of 5+ letters
+  # match at a word start (also split with dots or spaces), shorter words only as a whole word, 'regex:...' for patterns.
+  name_blacklist: []
+
 # Auto-Save Configuration
 auto_save: 30  # How often to save data (in minutes)
 
@@ -136,7 +156,7 @@ webhook_settings:
   mention: "" # Mention a user or role (e.g., <@&ROLE_ID>, leave empty for none)
 
 # Sound Settings
-# You can find all sound names here: https://hub.spigotmc.org/javadocs/spigot/org/bukkit/Sound.html
+# Use the sound constant (BLOCK_NOTE_BLOCK_CHIME) or its key (block.note_block.chime). NONE disables a sound.
 sounds:
   confirm: BLOCK_NOTE_BLOCK_CHIME
   fail: ENTITY_ENDERMAN_TELEPORT
@@ -149,6 +169,10 @@ sounds:
   search_open: UI_CARTOGRAPHY_TABLE_TAKE_RESULT
   menu_forward: BLOCK_ENCHANTMENT_TABLE_USE
   teleport: BLOCK_ENCHANTMENT_TABLE_USE
+  claim_create: BLOCK_BEACON_ACTIVATE   # Played at the claim block when a claim is created
+  claim_remove: ENTITY_GENERIC_EXPLODE  # Played at the claim block when a claim is removed or expires
+  land_expand: ENTITY_PLAYER_LEVELUP    # Played to the player after buying a chunk
+  land_unclaim: BLOCK_GRAVEL_BREAK      # Played to the player after unclaiming a chunk
 
 # Database Configuration
 # Chooses between MySQL and SQLite for data storage
@@ -174,4 +198,4 @@ database:
     connection_timeout: 30000  # Time (ms) to wait for a connection (default: 30 seconds)
 
 # Do not modify this value
-config_version: "{version}"
+config_version: "@version@"
