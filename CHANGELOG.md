@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- **Farmer support:** with [Farmer](https://github.com/Geik-xyz/Farmer-v6) installed, each claim can have one
+  farmer. The claim owner owns it, co-ops are added and removed as farmer users, and the farmer is deleted
+  with the claim. Add your claim worlds to `allowed-worlds` in Farmer's `config.yml`.
+
 ## 4.0.0
 
 A rewrite of the plugin's core for modern Paper and Folia, with redesigned menus.

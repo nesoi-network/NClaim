@@ -37,7 +37,8 @@ Spigot and Minecraft versions before 1.21.4 are no longer supported; use NClaim 
 3. Edit `config.yml` (every option is explained in the file) and apply changes with `/nclaim admin reload`.
 
 **Optional plugins:** [Vault](https://www.spigotmc.org/resources/vault.34315/) (economy), [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) (placeholders),
-WorldGuard (region blacklist), SkinsRestorer (head skins), AxSellwands.
+WorldGuard (region blacklist), SkinsRestorer (head skins), AxSellwands, [Farmer](https://github.com/Geik-xyz/Farmer-v6)
+(one farmer per claim, co-ops are added as farmer users; add your claim worlds to `allowed-worlds` in Farmer's `config.yml`).
 
 ### Upgrading from 3.x
 
