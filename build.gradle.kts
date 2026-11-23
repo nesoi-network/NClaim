@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "nesoi.aysihuniks"
-version = "4.0.0"
+version = "4.0.1"
 description = "Advanced chunk claim system for Paper and Folia"
 
 val paperApi: String = providers.gradleProperty("paperApi").get()
