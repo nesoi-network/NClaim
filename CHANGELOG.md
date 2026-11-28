@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.1.0
+
+Stable release of the 4.1.0 betas below, plus:
+
+### Fixed
+
+- Players with `nclaim.bypass.*` (every op by default) opened the owner's manage menu with a plain right-click on
+  someone else's claim block, so a claim for sale never showed them the purchase menu. A plain right-click now opens
+  the manage menu only for the owner and co-ops allowed to open it; admins use shift + right-click.
+- Player heads in menus always showed a default skin (Steve, Alex ...): skins from Mojang were read as a texture id
+  instead of a texture value. Online players now also use their skin right away, heads
+  that are still loading name their owner so the game can fill in the skin, offline-mode servers fall back to the
+  skin of the account with the same name, and a failed skin lookup is retried after 5 minutes instead of an hour.
+
 ## 4.1.0-beta.3
 
 ### New
