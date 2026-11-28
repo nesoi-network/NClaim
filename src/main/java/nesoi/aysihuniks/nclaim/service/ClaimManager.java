@@ -475,8 +475,11 @@ public class ClaimManager implements Listener {
                     return;
                 }
 
+                // Only the owner and co-ops allowed to open the menu get it on a plain right-click.
+                // hasPermission() would also let nclaim.bypass.* (every op) in, which hid the purchase
+                // menu from them; admins open other players' claims with shift + right-click instead.
                 boolean isOwner = coopManager.isClaimOwner(claim, player);
-                boolean hasMenuPerm = coopManager.hasPermission(player, claim, Permission.OPEN_CLAIM_MENU);
+                boolean hasMenuPerm = coopManager.getCoopPermissionState(claim, player.getUniqueId(), Permission.OPEN_CLAIM_MENU);
 
                 if (isOwner || hasMenuPerm) {
                     new ClaimManagementMenu(player, claim, false);
