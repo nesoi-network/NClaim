@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HeadManager {
 
     private static final long REFETCH_MS = 60 * 60 * 1000L;
+    private static final long RETRY_MS = 5 * 60 * 1000L;
 
     private final boolean skinsRestorer;
     private final Map<UUID, ItemStack> headCache = new ConcurrentHashMap<>();
@@ -56,8 +57,30 @@ public class HeadManager {
             headCache.put(uuid, head);
             return head.clone();
         }
+        Player online = Bukkit.getPlayer(uuid);
+        String live = online != null ? texturesOf(online.getPlayerProfile()) : null;
+        if (live != null) {
+            ItemStack head = createHeadWithTexture(live);
+            headCache.put(uuid, head);
+            User user = User.getUser(uuid);
+            if (user != null && !live.equals(user.getSkinTexture())) user.setSkinTexture(live);
+            return head.clone();
+        }
+
         fetchTexture(uuid);
-        return new ItemStack(Material.PLAYER_HEAD);
+        return createNamedHead(uuid, player.getName());
+    }
+
+    private static ItemStack createNamedHead(UUID uuid, @Nullable String name) {
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        if (name == null || name.isBlank()) return head;
+        try {
+            SkullMeta meta = (SkullMeta) head.getItemMeta();
+            meta.setPlayerProfile(Bukkit.createProfile(uuid, name));
+            head.setItemMeta(meta);
+        } catch (Exception ignored) {
+        }
+        return head;
     }
 
     public ItemStack createHeadFromCache(@NotNull UUID uuid) {
@@ -90,10 +113,20 @@ public class HeadManager {
     }
 
     private static String toBase64(String texture) {
-        if (texture.startsWith("ey")) return texture; // already base64 JSON
+        if (isBase64Json(texture)) return texture;
         String url = texture.startsWith("http") ? texture : "https://textures.minecraft.net/texture/" + texture;
         String json = "{\"textures\":{\"SKIN\":{\"url\":\"" + url + "\"}}}";
         return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static boolean isBase64Json(String texture) {
+        if (texture.startsWith("http") || texture.length() < 8) return false;
+        try {
+            String decoded = new String(Base64.getDecoder().decode(texture), StandardCharsets.UTF_8).trim();
+            return decoded.startsWith("{");
+        } catch (IllegalArgumentException notBase64) {
+            return false;
+        }
     }
 
     /* ---------------- textures ---------------- */
@@ -120,7 +153,10 @@ public class HeadManager {
         lastFetch.put(uuid, now);
 
         resolveTexture(uuid).thenAccept(texture -> {
-            if (texture == null) return;
+            if (texture == null) {
+                lastFetch.put(uuid, System.currentTimeMillis() - REFETCH_MS + RETRY_MS);
+                return;
+            }
             headCache.put(uuid, createHeadWithTexture(texture));
             User user = User.getUser(uuid);
             if (user != null && !texture.equals(user.getSkinTexture())) user.setSkinTexture(texture);
@@ -142,8 +178,16 @@ public class HeadManager {
             String t = texturesOf(online.getPlayerProfile());
             if (t != null) return CompletableFuture.completedFuture(t);
         }
-        PlayerProfile profile = Bukkit.createProfile(uuid);
-        return profile.update().thenApply(HeadManager::texturesOf);
+        String name = online != null ? online.getName() : Bukkit.getOfflinePlayer(uuid).getName();
+        return Bukkit.createProfile(uuid).update()
+                .thenApply(HeadManager::texturesOf)
+                .exceptionally(t -> null)
+                .thenCompose(t -> {
+                    if (t != null || name == null) return CompletableFuture.completedFuture(t);
+                    return Bukkit.createProfile(name).update()
+                            .thenApply(HeadManager::texturesOf)
+                            .exceptionally(e -> null);
+                });
     }
 
     @Nullable
